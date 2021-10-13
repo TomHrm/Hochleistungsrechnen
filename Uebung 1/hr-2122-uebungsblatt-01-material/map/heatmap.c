@@ -76,9 +76,9 @@ void set_to_average (int x, int y)
         {
             res = res + map[x+1][y];
         }
-        if( y+1 >= 0 && y+1 < 3 )
-        {
-            res = res + map[x+1][y+1];
+			if( y+1 >= 0 && y+1 < 3 )
+			{
+				res = res + map[x+1][y+1];
         }
     }
     set_temperature(x, y, res/ 9;);
