@@ -7,31 +7,31 @@ int TODO;
 
 void print_pointer(int* zeiger)
 {
-	printf("Der Zeiger hat den Wert bzw. zeigt auf die Adresse: %p\n", 0 /* TODO.*/);
+	printf("Der Zeiger hat den Wert bzw. zeigt auf die Adresse: %p\n",(void *) &zeiger);
   // Hinweis: Der Compiler wird auch bei einer richtigen Antwort eine Warnung ausgeben. Fügen Sie den Type-Cast "(void *)" vor Ihrer Antwort ein, um diese zu entfernen. 
 }
 
 void print_value(int* zeiger)
 {
-	printf("Der Wert, auf den der Zeiger zeigt, ist: %d\n", 0 /* TODO */);
+	printf("Der Wert, auf den der Zeiger zeigt, ist: %d\n", *zeiger);
 }
 
 void set_global_value(int* zeiger)
 {
   // Setzen Sie globaler_wert auf den Wert, auf den der Zeiger zeigt.
-  globaler_wert = TODO;
+  globaler_wert = *zeiger;
 }
 
 void set_value(int* zeiger, int value)
 {
   // Setzen Sie den Wert, auf den der Zeiger zeigt, auf den gegebenen Wert.
-  TODO = value;
+  *zeiger = value;
 }
 
 void change_pointer(int** zeiger_zeiger)
 {
   // Setzen Sie den Zeiger, auf den der Zeiger zeigt, auf die Adresse von globaler_wert.
-  TODO = TODO;
+  *zeiger_zeiger = &globaler_wert;
 }
 
 // Man kann Arrays in Funktionsköpfe verwenden:
@@ -40,9 +40,9 @@ void change_pointer(int** zeiger_zeiger)
 void change_second_value(int* array_zeiger)
 {
   // Ändern Sie den Zeiger so, dass er auf das zweite Element des Arrays zeigt.
-  array_zeiger = TODO;
+  array_zeiger = array_zeiger+1;
   // Ändern Sie den Wert des zweiten Elements
-  TODO = 200;
+  *array_zeiger = 200;
 }
 
 void operator_precedence()
@@ -52,8 +52,8 @@ void operator_precedence()
   
   // Entfernen Sie alle unnötigen und falschen Klammern, und fügen Sie fehlende Klammern hinzu.
   // Betrachten Sie hierfür den Begriff "Operator Precedence".
-  printf("Das erste Array-Element plus 1: %d.\n", (*zeiger_array[1]) + 1);
-  printf("Das zweite Array-Element: %d.\n", ((*zeiger_array)[1]) + 1);
+  printf("Das erste Array-Element plus 1: %d.\n", *zeiger_array[1] + 1);
+  printf("Das zweite Array-Element: %d.\n", *(zeiger_array[1] + 1));
   printf("Das vierte Array-Element plus 1: %d.\n", *((zeiger_array[1]) + 1));
 }
 
