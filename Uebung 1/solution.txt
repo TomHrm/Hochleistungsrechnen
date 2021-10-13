@@ -1,0 +1,11 @@
+Frage: Mit which können Sie sich den Pfad einer Anwendung anzeigen lassen.
+Warum funktioniert das nicht für das Kommando cd? (Tipp: man bash)
+cd ist ein Komando, welches in die bash.Shell einbaut ist und braucht daher keine Biniaries aus /bin. Der Unterschied ist deer gleiche wie bei den  DOS-Dateientypen .exe und .com. Also weil cd ein Shell builtin Command ist.
+
+Frage: Was fällt Ihnen bezüglich der drei Größen auf?
+	Die Datei "zufall" ist genau 256K groß, was den 256 1K großen Blöcken aus den "dd" Parametern entspricht. 
+	Die Größe des Ordners ist 3 Byte.
+	tar alleine verkleinert die Datei nicht. "archiv.tar" ist 260K groß. Üblicherweise verwendet man tar um mehrere Dateien zu einer größeren zusammenzufügen bevor man sie z.B. mit gzip komprimiert.
+
+Frage: Ist es möglich, ein gepacktes Archiv (.tar.gz) mit einem Aufruf von tar zu erzeugen? Wie hätte dieser Aufruf lauten müssen?
+Ja, ist es. Der Aufruf wäre dann "tar -czf archiv.tar.gz archiv". 
