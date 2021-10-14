@@ -9,7 +9,7 @@ double map[3][3];
 	void set_temperature (int x, int y, double temperature)
 	{
 		if(x >= 3 || x < 0 || y >= 3 || y < 0  )
-		{	
+		{
 			fprintf(stderr, "x oder y müssen jeweils zwischen 0 und 3 liegen \n \n");
 			return;
 		}
@@ -27,7 +27,7 @@ double map[3][3];
 			}
 			printf("\n");
 		}
-		printf("\n");	
+		printf("\n");
 	}
 
 // Die Funktion set_to_average soll an Position [x, y] den Durchschnitt der 8 umgebenen
@@ -42,15 +42,15 @@ void set_to_average (int x, int y)
     {
         if( y-1 >= 0 && y-1 < 3 )
         {
-            res += + map[x-1][y-1];
+            res += map[x-1][y-1];
         }
         if( y >= 0 && y < 3 )
         {
-            res += + map[x-1][y];
+            res += map[x-1][y];
         }
         if( y+1 >= 0 && y+1 < 3 )
         {
-            res += + map[x-1][y+1];
+            res += map[x-1][y+1];
         }
     }
     // row 2
@@ -58,11 +58,11 @@ void set_to_average (int x, int y)
     {
         if( y-1 >= 0 && y-1 < 3 )
         {
-            res += + map[x][y-1];
+            res += map[x][y-1];
         }
         if( y+1 >= 0 && y+1 < 3 )
         {
-            res += + map[x][y+1];
+            res += map[x][y+1];
         }
     }
     // row 3
@@ -70,15 +70,15 @@ void set_to_average (int x, int y)
     {
         if( y-1 >= 0 && y-1 < 3 )
         {
-            res += + map[x+1][y-1];
+            res += map[x+1][y-1];
         }
         if( y >= 0 && y < 3 )
         {
-            res += + map[x+1][y];
+            res += map[x+1][y];
         }
 			if( y+1 >= 0 && y+1 < 3 )
 			{
-				res += + map[x+1][y+1];
+				res += map[x+1][y+1];
         }
     }
     set_temperature(x, y, res/ 8);
@@ -105,7 +105,7 @@ int main (void)
 	set_temperature(1, 1, 50.5);
 
 	show_map();
-  
+
   set_to_average(0,0);
   set_to_average(2,0);
   set_to_average(1,2);
