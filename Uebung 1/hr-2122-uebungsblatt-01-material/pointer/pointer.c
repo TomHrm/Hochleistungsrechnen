@@ -2,9 +2,6 @@
 
 int globaler_wert = 0;
 
-// Löschen Sie diese Variable nach der Bearbeitung aller Funktionen.
-int TODO;
-
 void print_pointer(int* zeiger)
 {
 	printf("Der Zeiger hat den Wert bzw. zeigt auf die Adresse: %p\n",(void *) &zeiger);
@@ -54,7 +51,7 @@ void operator_precedence()
   // Betrachten Sie hierfür den Begriff "Operator Precedence".
   printf("Das erste Array-Element plus 1: %d.\n", *zeiger_array[1] + 1);
   printf("Das zweite Array-Element: %d.\n", *(zeiger_array[1] + 1));
-  printf("Das vierte Array-Element plus 1: %d.\n", *((zeiger_array[1]) + 1));
+  printf("Das vierte Array-Element plus 1: %d.\n", (*zeiger_array[] + 1));
 }
 
 int main (void)
