@@ -23,7 +23,7 @@ double map[3][3];
 		{
 			for(int j = 0; j < 3; j++)
 			{
-				printf("%f\t",map[i][j]);
+				printf("%.2f\t",map[i][j]);
 			}
 			printf("\n");
 		}
