@@ -4,7 +4,7 @@ int globaler_wert = 0;
 
 void print_pointer(int* zeiger)
 {
-	printf("Der Zeiger hat den Wert bzw. zeigt auf die Adresse: %p\n",(void *) &zeiger);
+	printf("Der Zeiger hat den Wert bzw. zeigt auf die Adresse: %p\n",(void *) zeiger);
   // Hinweis: Der Compiler wird auch bei einer richtigen Antwort eine Warnung ausgeben. Fügen Sie den Type-Cast "(void *)" vor Ihrer Antwort ein, um diese zu entfernen. 
 }
 
