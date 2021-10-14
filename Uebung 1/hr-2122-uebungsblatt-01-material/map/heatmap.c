@@ -81,7 +81,7 @@ void set_to_average (int x, int y)
 				res += + map[x+1][y+1];
         }
     }
-    set_temperature(x, y, res/ 9);
+    set_temperature(x, y, res/ 8);
 }
 
 // In dieser Funktion darf nichts verändert werden!
