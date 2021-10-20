@@ -1,0 +1,95 @@
+(base) ➜  simple git:(main) ✗ gdb ./simple
+GNU gdb (Ubuntu 9.2-0ubuntu1~20.04) 9.2
+Copyright (C) 2020 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later http://gnu.org/licenses/gpl.html
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Type "show copying" and "show warranty" for details.
+This GDB was configured as "x86_64-linux-gnu". 
+Type "show configuration" for configuration details.
+For bug reporting instructions, please see:
+http://www.gnu.org/software/gdb/bugs/.
+Find the GDB manual and other documentation resources online at:
+    http://www.gnu.org/software/gdb/documentation/.
+For help, type "help".
+Type "apropos word" to search for commands related to "word"...
+Reading symbols from simple...done.
+(gdb) c
+Haltepunkt 1 at 0x798: file simple.c, line 11.
+(gdb) run
+Starting program: ~/hr/git/Blatt02/simple/simple 
+
+Breakpoint 1, mistake1 () at simple.c:11
+11	{
+(gdb) print buf
+$1 = {194, 0, -8497, 32767, -8498, 32767}
+(gdb) print buf[2]
+$2 = -8497
+(gdb) next
+12	  int buf[] = { 1, 1, 2, 3, 4, 5 };
+(gdb) print buf
+$3 = {194, 0, -8497, 32767, -8498, 32767}
+(gdb) print buf[2]
+$4 = -8497
+(gdb) next
+13	  return buf;
+(gdb) print buf
+$5 = {1, 1, 2, 3, 4, 5}
+(gdb) print buf[2]
+$6 = 2
+(gdb) explore buf
+'buf' is an array of 'int'.
+Enter the index of the element you want to explore in 'buf': 0
+'buf[0]' is a scalar value of type 'int'.
+buf[0] = 1
+
+Press enter to return to parent value: 
+
+Returning to parent value...
+
+'buf' is an array of 'int'.
+Enter the index of the element you want to explore in 'buf': 
+(gdb) break mistake2
+Haltepunkt 2 at 0x5555555547f4: file simple.c, line 19.
+(gdb) continue
+Continuing.
+
+Breakpoint 2, mistake2 () at simple.c:19
+19	  int *buf = malloc (sizeof (char) * 4);
+(gdb) next
+20	  buf[2] = 2;
+(gdb) explore buf
+'buf' is a pointer to a value of type 'int'
+Continue exploring it as a pointer to a single value [y/n]: n
+Continue exploring it as a pointer to an array [y/n]: n
+(gdb) continue
+Continuing.
+
+Program received signal SIGSEGV, Segmentation fault.
+0x0000555555554830 in mistake3 () at simple.c:30
+30	  buf[0] = 3;
+(gdb) list 30
+25	mistake3 ()
+26	{
+27	  /* In dieser Funktion darf kein Speicher direkt allokiert werden. */
+28	  int mistake2_ = 0;
+29	  int *buf = (int *) &mistake2;
+30	  buf[0] = 3;
+31	  return buf;
+32	}
+33	
+34	int *
+(gdb) backtrace
+#0  0x0000555555554830 in mistake3 () at simple.c:30
+#1  0x00005555555548b7 in main () at simple.c:47
+(gdb) frame 1
+#1  0x00005555555548b7 in main () at simple.c:47
+47	  int *p[4] = { &mistake1 ()[1], &mistake2 ()[1], mistake3 (), mistake4 () };
+(gdb) print p
+$7 = {0x4, 0x555555756014, 0x555555554960 <__libc_csu_init>, 
+  0x555555554660 <_start>}
+(gdb) call mistake4
+$8 = {int *()} 0x55555555483c <mistake4>
+(gdb) kill
+Kill the program being debugged? (y or n) y
+(gdb) quit
