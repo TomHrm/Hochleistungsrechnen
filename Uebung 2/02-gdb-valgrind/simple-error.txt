@@ -1,0 +1,92 @@
+int *
+mistake1 ()
+{
+  int buf[] = { 1, 1, 2, 3, 4, 5 }; <--- lokale Variable
+  return buf;
+}
+
+Fehler: buf ist ein lokales Array, buf kann also wie ein Zeiger aufgefasst
+werden. Der für das Array reservierte Speicherbereich ist nur innerhalb dieser
+Funktion gültig. Nach Ende der Funktion wird eine Kopie der Adresse dieses
+Speicherbereichs zurückgegeben, der aber nun ungültig ist. Daher muss dieser
+dynamisch mit malloc angelegt werden, um auch außerhalb von mistake1 zugreifbar
+zu sein.
+Korrektur: Mit malloc dynamischen Speicher zuweisen.
+
+int *
+mistake2 ()
+{
+  int *buf = malloc (sizeof (char) * 4); <--- falscher typ: char
+  buf[2] = 2; <--- falscher Index
+  return buf;
+}
+
+Fehler: Der Typ innerhalb von sizeof ist falsch. Das ist noch kein Fehler per
+se, aber leider wird dadurch ein zu kleiner Speicherbereich (4 * 1 Byte)
+allokiert, was nur der Größe von 1 int entspricht und buf[2] greift auf nicht
+allokierten Speicherbereich zu.
+Fehler: Für die spätere Ausgabe wird ein anderer Index gebraucht.
+Korrektur: Typ und Index angepasst.
+Bemerkung: Speichergröße 2 statt 4 hätte auch gereicht.
+
+int *
+mistake3 ()
+{
+  /* In dieser Funktion darf kein Speicher direkt allokiert werden. */
+  int mistake2_ = 0;
+  int *buf = (int *) &mistake2; <--- Funktionszeiger oder -aufruf?
+  buf[0] = 3;
+  return buf;
+}
+
+Fehler: Das Label "mistake2" bezeichnet eine Funktion, "&mistake2" bezeichnet
+die Adresse der Funktion im Programmsegment zur Verwendung mit Funktionszeigern.
+Die Adresse der Funktion dann als Zeiger auf einen int aufzufassen ist totaler
+Mumpitz.
+Fehler: Die lokale Variable mistake2_ wird überhaupt nicht verwendet und ist
+daher überflüssig.
+Korrektur: Vermutlich soll buf einfach auf den Speicherbereich
+zeigen, der durch Aufruf von mistake2() bereitgestellt und per Zeiger
+zurückgegeben wird. Dies wurde getan.
+Korrektur: Unbenutzte Variable entfernt / auskommentiert.
+Bemerkung: Sehr nebulös, der originale Sinn des Statements musste geraten
+werden.
+
+int *
+mistake4 ()
+{
+  int *buf = malloc (sizeof (char) * 4);
+  buf[4] = 4; <--- Index out of bounds
+  free (buf); <--- Freigabe vor weiterer Verwendung
+  return buf;
+}
+
+Fehler: Der Index von buf ist zu hoch und greift auf nicht allokierten
+Speicherbereich zu.
+Korrektur: Index angepasst.
+Fehler: buf darf nicht freigegeben werden, wenn hinterher noch auf buf
+zugegriffen wird.
+Korrektur: Free-Statement gelöscht.
+Bemerkung: Da in main() lediglich mistake4() aufgerufen wird und gar nicht per
+Index auf eines der Elemente zugegriffen wird, wird also nur das erste Element
+benutzt. An dieser Stelle passt daher dann auch "sizeof(char) * 4", weil es
+dasselbe Ergebnis liefert wie das korrekte "sizeof(int)" (* 1), falls denn 1
+die gewünschte Länge sein sollte. Aber natürlich darf man dann nicht auf
+Indizes > 0 zugreifen.
+Bemerkung: buf wurde gar hier nicht freigegeben, sondern die Freigabe erfolgt
+nach dem alle Verwendungen passiert sind, ganz am Ende von main().
+
+  free (p[1]);			/* welcher Pointer war das doch gleich?, Fixme... :-) */
+
+Fehler: Hier enthält p[1] den Aufruf von "&mistake1 ()[1]", also den
+Rückgabezeiger von Aufruf von mistake1(), ausgewertet am Index und dann davon
+die Adresse. Geschickterweise haben wir uns also nicht den Zeiger auf den
+Speicherbereich gemerkt, sondern auf das folgende int-Element dahinter. Den
+Bereich freigeben können wir aber nur über seine Anfangsadresse.
+Korrektur: Wir müssen also den gemerkten Zeiger p[0] wieder um 1 int nach vorn
+schieben, per Zeigerarithmetik.
+Fehler: Die Anderen Speicherbereiche wurden nicht freigegeben.
+Korrektur: Die anderen Speicherbereiche, die durch Aufruf der anderen mistakeN()
+allokiert wurden, natürlich auch wieder freigeben. Wobei p[1] das gleiche
+Problem aufweist wie p[0], die anderen beiden aber sinnvollerweise direkt auf
+den Bereich zeigen.
