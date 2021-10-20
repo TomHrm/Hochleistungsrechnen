@@ -53,7 +53,9 @@ main (void)
 
   /* mhh muss hier noch etwas gefreed werden? */
   /* Fügen sie hier die korrekten aufrufe von free() ein */
-  free (p[1]);			/* welcher Pointer war das doch gleich?, TODO: Fixme... :-) */
-
+  free ((p[0])-1);			/* welcher Pointer war das doch gleich?, TODO: Fixme... :-) */
+  free ((p[1])-1);
+  free (p[2]);
+  free (p[3]);
   return 0;
 }
