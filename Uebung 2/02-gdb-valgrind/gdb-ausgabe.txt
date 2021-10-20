@@ -17,7 +17,7 @@ Reading symbols from simple...done.
 (gdb) c
 Haltepunkt 1 at 0x798: file simple.c, line 11.
 (gdb) run
-Starting program: ~/hr/git/Blatt02/simple/simple 
+Starting program: /Users/tom/Hochleistungsrechnen/Uebung 2/02-gdb-valgrind/simple/simple
 
 Breakpoint 1, mistake1 () at simple.c:11
 11	{
