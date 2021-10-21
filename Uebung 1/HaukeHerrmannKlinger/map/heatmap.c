@@ -19,11 +19,11 @@ double map[3][3];
 	// Die Funktion show_map soll das Array in Form einer 3x3-Matrix ausgeben
 	void show_map (void)
 	{
-		for(int i = 0; i < 3 ; i++)
+		for(int x = 0; x < 3 ; x++)
 		{
-			for(int j = 0; j < 3; j++)
+			for(int y = 0; y < 3; y++)
 			{
-				printf("%.2f\t",map[i][j]);
+				printf("%.2f\t",map[x][y]);
 			}
 			printf("\n");
 		}
