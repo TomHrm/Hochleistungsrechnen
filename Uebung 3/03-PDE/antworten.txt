@@ -54,7 +54,7 @@ scancel <jobid>
 9. Können auf dem Cluster mehrere Nutzer oder Jobs gleichzeitig denselben
    Knoten benutzen?
 
-Korrektur: Nein.
+Nein.
 
 10. Finden Sie heraus wie Sie sich den detaillierten Status eines Jobs ausgeben
     lassen können.
