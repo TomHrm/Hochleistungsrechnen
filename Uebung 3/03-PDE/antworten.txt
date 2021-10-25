@@ -113,13 +113,12 @@ Ressourcen verbrauch kommen aber wahrscheinlich früher mal dran.
 
 sinfo
 PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
-abu          up    6:00:00      4  down* abu[1-4]
-abu          up    6:00:00      1   idle abu5
-amd          up    6:00:00      5   idle amd[1-5]
+abu          up    6:00:00      5   idle abu[1-5]
+amd          up    6:00:00      3  down* amd[2-4]
 magny        up    6:00:00      1   idle magny1
 nehalem      up    6:00:00      1   idle nehalem5
-west         up    6:00:00      1  alloc west1
-west         up    6:00:00      9   idle west[2-10]
+west         up    6:00:00      2  alloc west[1,7]
+west         up    6:00:00      8   idle west[2-6,8-10]
 
 Angabe der zu benutzenden Partition über salloc oder im Job-Script:
 #SBATCH --partition=west
