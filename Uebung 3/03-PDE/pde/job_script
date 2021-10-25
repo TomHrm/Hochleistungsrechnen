@@ -1,0 +1,10 @@
+#!/bin/bash
+
+#SBATCH --nodes=4
+#SBATCH --ntasks=16
+#SBATCH --partition=west
+#SBATCH --output=timescript.out
+
+rm -f job_script.out
+srun timescript
+echo fertig>job_script.out
