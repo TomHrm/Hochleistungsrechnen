@@ -1,0 +1,181 @@
+Erfolgte Maßnahmen:
+
+Compiler-Optimierung auf O3 gestellt.
+
+Die Matrix hat die Indizes [m][i][j] und sollte daher in der innersten Schleife in j durchlaufen werden, die i-Schleife außerhalb.
+
+In getResiduum() wird jeweils mit -star gerechnet, und zuvor in calculate() star auch durch viele Subtraktionen bestimmt. Wir haben die Zeilen geändert.
+
+
+Die Messergebnisse jeweils mit und ohne diese Maßnahmen bzw. in Kombination:
+
+Auf west3:
+
+Die Laufzeit ohne Optimierung ist 96.988348 s. 
+Mit O3 ist sie 23.905274 s.
+Nur Vertauschung for(i..), for (j...) 92.352793 s.
+Vertauschung for und Add/Subtr. für star geändert 90.472675 s.
+Vertauschung for und O3 13.003815 s.
+Alles 12.504745 s
+
+Allerdings hatten wir lokal und auch auf dem Clsuter zu anderen Zeiten andere Werte und dabei schon den Faktor 10 erreicht.
+
+Hier z.B. lokal:
+
+Die Laufzeit ohne Optimierung ist 65.201159 s. 
+Mit O3 ist sie 10.970067 s.
+Nur Vertauschung for(i..), for (j...) 58.581035 s.
+Vertauschung for und O3 6.468457 s.
+Alles 5.717523 s
+
+
+Erfolglose Versuche
+
+Mit O2-Optimierung ist die Laufzeit analog zu O3, mit O1-Optimierung eher mit der Zeit ohne Optimierung gleichzusetzen.
+
+Reihenfolge der Summanden ändern in:
+
+star = -Matrix[m2][i-1][j] - Matrix[m2][i][j-1] - Matrix[m2][i][j+1] - Matrix[m2][i+1][j] + 4.0 * Matrix[m2][i][j];
+
+Matrix[m2] bzw. Matrix[m1] in 2 lokalen Zeigern speichern.
+
+x / 4.0 ersetzten durch x * 0.25
+
+x * 4.0 ersetzen durch x + x + x + x
+
+Position der Zeile weiter nach oben verschieben (temp. variable Korrektur wäre dann überflüssig):
+
+Matrix[m1][i][j] = Matrix[m2][i][j] + korrektur;
+
+?-Operator durch normale if-Abfrage ersetzt (hier wird ja jedes mal etwas zugewiesen, ist trotzdem schneller):
+
+maxresiduum = (residuum < maxresiduum) ? maxresiduum : residuum;
+
+
+Profiling:
+
+Wir betrachten nur die ursprüngliche Version, um herauszufinden, wo Optimierungsbedarf besteht. Die nachfolgenden Versionen zu untersuchen ist besonders bei eingeschalteter Optimierung nicht sinnvoll.
+Nach Kompilierung mit -pg der ursprünglichen langsamen Version und einmaliger Ausführung "./partdiff-seq 1 2 64 1 2 10240" liefert uns "gprof ./partdiff-seq" folgende Ausgabe:
+
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total           
+ time   seconds   seconds    calls   s/call   s/call  name    
+ 94.65    107.64   107.64        1   107.64   113.48  calculate
+  5.13    113.48     5.84 2758256640     0.00     0.00  getResiduum
+  0.34    113.87     0.39        1     0.39     0.39  initMatrices
+  0.00    113.87     0.00        4     0.00     0.00  allocateMemory
+  0.00    113.87     0.00        1     0.00     0.00  AskParams
+  0.00    113.87     0.00        1     0.00     0.00  DisplayMatrix
+  0.00    113.87     0.00        1     0.00     0.00  allocateMatrices
+  0.00    113.87     0.00        1     0.00     0.00  displayStatistics
+  0.00    113.87     0.00        1     0.00     0.00  freeMatrices
+  0.00    113.87     0.00        1     0.00     0.00  initVariables
+
+
+granularity: each sample hit covers 2 byte(s) for 0.01% of 113.87 seconds
+
+index % time    self  children    called     name
+                                                 <spontaneous>
+[1]    100.0    0.00  113.87                 main [1]
+              107.64    5.84       1/1           calculate [2]
+                0.39    0.00       1/1           initMatrices [4]
+                0.00    0.00       1/1           AskParams [6]
+                0.00    0.00       1/1           initVariables [11]
+                0.00    0.00       1/1           allocateMatrices [8]
+                0.00    0.00       1/1           displayStatistics [9]
+                0.00    0.00       1/1           freeMatrices [10]
+                0.00    0.00       1/1           DisplayMatrix [7]
+-----------------------------------------------
+              107.64    5.84       1/1           main [1]
+[2]     99.7  107.64    5.84       1         calculate [2]
+                5.84    0.00 2758256640/2758256640     getResiduum [3]
+-----------------------------------------------
+                5.84    0.00 2758256640/2758256640     calculate [2]
+[3]      5.1    5.84    0.00 2758256640         getResiduum [3]
+-----------------------------------------------
+                0.39    0.00       1/1           main [1]
+[4]      0.3    0.39    0.00       1         initMatrices [4]
+-----------------------------------------------
+                0.00    0.00       4/4           allocateMatrices [8]
+[5]      0.0    0.00    0.00       4         allocateMemory [5]
+-----------------------------------------------
+                0.00    0.00       1/1           main [1]
+[6]      0.0    0.00    0.00       1         AskParams [6]
+-----------------------------------------------
+                0.00    0.00       1/1           main [1]
+[7]      0.0    0.00    0.00       1         DisplayMatrix [7]
+-----------------------------------------------
+                0.00    0.00       1/1           main [1]
+[8]      0.0    0.00    0.00       1         allocateMatrices [8]
+                0.00    0.00       4/4           allocateMemory [5]
+-----------------------------------------------
+                0.00    0.00       1/1           main [1]
+[9]      0.0    0.00    0.00       1         displayStatistics [9]
+-----------------------------------------------
+                0.00    0.00       1/1           main [1]
+[10]     0.0    0.00    0.00       1         freeMatrices [10]
+-----------------------------------------------
+                0.00    0.00       1/1           main [1]
+[11]     0.0    0.00    0.00       1         initVariables [11]
+-----------------------------------------------
+
+
+Wir sehen in der Ausgabe, dass sich das Programm fast ausschließlich in der Funktion calculate() aufhält und getResiduum() (von dort) extrem oft aufgerufen wird. Dies sind also die zwei Stellen, die wir uns zur Optimierung anschauen müssen.
+
+
+Perf liefert folgende Informationen:
+
+ Performance counter stats for './partdiff-seq 1 2 64 1 2 10240':
+
+      97406.445591      task-clock (msec)         #    0.999 CPUs utilized          
+             8,146      context-switches          #    0.084 K/sec                  
+                 1      cpu-migrations            #    0.000 K/sec                  
+             6,718      page-faults               #    0.069 K/sec                  
+   259,384,717,991      cycles                    #    2.663 GHz                      (83.34%)
+   125,368,070,889      stalled-cycles-frontend   #   48.33% frontend cycles idle     (83.33%)
+     8,912,960,007      stalled-cycles-backend    #    3.44% backend  cycles idle     (66.67%)
+   482,997,269,222      instructions              #    1.86  insns per cycle        
+                                                  #    0.26  stalled cycles per insn  (83.34%)
+    22,100,241,410      branches                  #  226.887 M/sec                    (83.33%)
+         7,230,365      branch-misses             #    0.03% of all branches          (83.33%)
+
+      97.479434385 seconds time elapsed
+
+
+Der Wert "task-clock" stellt ein Maß für die Parallelität dar. Am Ergebnis "0.999 CPUs utilized" sehen wir, dass wir ein sequentielles Programm ausführen.
+
+Der geringe Wert bei "context-switches" zeigt uns, dass nicht häufig zwischen Prozessen hin- und hergeschaltet wurde.
+
+Der Wert "cpu-migrations" sagt uns, dass unser Programm 2 mal von einer CPU auf die andere gewechselt ist, was eine noch größere Unterbrechung als ein "context-switch" darstellt.
+
+"page-fault" ist ein Maß, wie effektiv der Hauptspeicher genutzt wurde. Hohe "page-fault" Werte würden bedeuten, dass der Hauptspeicher zu stark ausgelastet wurde und in Swap/Auslagerungsdatei geschrieben wurde.
+
+"stalled-cycles-..." zeigt uns an, wie oft die CPU auf Hauptspeicherzugriffe, I/O etc. warten musste und nicht fleißig weiter rechnen durfte.
+
+"branches" gibt uns die Anzahl der Verzweigungen an, die durch Bedingungen (if) oder Funktionsaufrufe ausgelöst werden. 
+
+"branch-misses" sollte deutlich kleiner sein als "branches", so zeigt es uns, dass die Verzweigungen effektiv ausgeführt wurden.
+
+
+In unserem Fall können wir vor allem an "48.33% frontend cycles idle" sehen, dass unser Programm zu häufig wartet. Hier wird wohl auf den Hauptspeicher gewartet weil der Cache nicht effizient genutzt wird.
+
+
+Nach der Optimierung sieht die Ausgabe so aus:
+
+ Performance counter stats for './partdiff-seq 1 2 64 1 2 10240':
+
+      12524.794802      task-clock (msec)         #    0.998 CPUs utilized          
+             1,052      context-switches          #    0.084 K/sec                  
+                 1      cpu-migrations            #    0.000 K/sec                  
+             2,838      page-faults               #    0.227 K/sec                  
+    33,342,776,190      cycles                    #    2.662 GHz                      (83.31%)
+     8,449,249,994      stalled-cycles-frontend   #   25.34% frontend cycles idle     (83.35%)
+       114,124,020      stalled-cycles-backend    #    0.34% backend  cycles idle     (66.68%)
+    69,057,083,950      instructions              #    2.07  insns per cycle        
+                                                  #    0.12  stalled cycles per insn  (83.34%)
+    11,050,838,658      branches                  #  882.317 M/sec                    (83.35%)
+         5,396,762      branch-misses             #    0.05% of all branches          (83.32%)
+
+      12.543813759 seconds time elapsed

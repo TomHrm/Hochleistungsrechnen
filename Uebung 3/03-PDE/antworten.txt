@@ -1,0 +1,154 @@
+1 Batch Queuing
+---------------
+1. Was bedeutet der Begriff Batch Queuing?
+
+Ein Batch Prozess ist das nicht-interaktive Ausführen eines oder mehrerer 
+Programme oder OS-Befehle. Werden viele solcher Prozesse gestartet, werden sie
+in einem Batch Queuing System nicht alle sofort und gleichzeitig ausgeführt
+sondern in eine Queue eingereiht und nacheinander abgearbeitet.
+
+2. Welche Aufgaben hat ein Batch-Queuing-System?
+
+Das Batch-Queuing-System nimmt Aufträge entgegen, reiht sie in die Queue ein
+und führt sie aus, sobald die Ressourcen dafür zur Verfügung stehen, z.B. auf
+dem Knoten eines Clusters, der gerade einen anderen Job beendet hat.
+Außerdem ist es üblicherweise möglich, Abhängigkeiten, Startzeiten, maximale
+Laufzeiten (danach Zwangsabbruch) oder benötigte Ressourcen (RAM, CPU)
+anzgeben.
+Der Anwender soll natürlich über den Status informiert werden und die
+Möglichkeit haben, den Job vor oder während der Ausführung abzubrechen.
+
+3. Nennen Sie drei Beispiele für Batch-Queuing-Systeme.
+
+SLURM, Moab, NetworkComputer
+
+4. Welches Batch-Queuing-System wird auf dem Cluster verwendet?
+
+SLURM
+
+5. Machen Sie sich mit der Manpage von sbatch vertraut. Beschreiben Sie die
+   Funktionsweise des Kommandos.
+
+sbatch übergibt dem Batch-Queuing-System einen Auftrag. Als Parameter für
+sbatch ist eine Script Datei zu übergeben, in der Parameter (Wieviele Tasks/
+Knoten, Welche Partition) gesetzt werden, benötigte Module geladen und dann
+der eigentliche Programmaufruf erfolgt. Nach Beenden von sbatch ist der Job
+lediglich angenommen, aber noch nicht in Ausführung. Als Referenz auf den Job
+wird eine Job-ID angezeigt.
+
+6. Wie lassen sich die aktuellen Jobs und deren Status anzeigen?
+
+squeue
+
+7. Machen Sie sich mit dem Befehl sview vertraut. Beschreiben Sie die
+   wichtigsten Vorteile gegenüber dem vorigen Punkt.
+
+sview bietet eine grafische Oberfläche. Zu den angezeigten Jobs kann man leicht
+per Menü die Parameter bearbeiten oder den Job abbrechen.
+
+8. Gibt es eine Möglichkeit, einen bereits abgeschickten Job zu löschen (bevor
+   oder während er läuft)? Wenn ja, wie?
+
+scancel <jobid>
+
+9. Können auf dem Cluster mehrere Nutzer oder Jobs gleichzeitig denselben
+   Knoten benutzen?
+
+Nein.
+
+10. Finden Sie heraus wie Sie sich den detaillierten Status eines Jobs ausgeben
+    lassen können.
+
+In sview: Rechtsklick auf Job -> Full info
+scontrol show jobid -dd <jobid>
+
+11. Welche Scheduling-Verfahren sind bei dem auf dem Cluster benutzten System
+    möglich? Welches wird benutzt? Erläutern Sie jedes der Verfahren kurz.
+
+Builtin-Scheduling: Bei Vergabe der Ressourcen werden nur die Prioritäten der
+Jobs berücksichtigt. D.h. ein Job wird nicht gestartet, solange ein Job mit
+höherer Priorität in der Warteschlange ist. Die Berechnung der Reihenfolge nach
+dieser Methode ist relativ einfach.
+Backfill-Scheduling: Zusätzlich zum Builtin-Scheduling wird geprüft, ob weitere
+Jobs mit geringerer Priorität gestartet werden können, ohne dass Jobs mit
+höherer Priorität dadurch verzögert werden. Dies kann z.b. der Fall sein, wenn
+die Top X der hochpriorisierten Jobs das Cluster zu 98% auslasten, der Job auf
+Platz X+1 5% benötigen würde, also nicht ausgeführt werden kann. Dann mag es
+sein, dass kleine Jobs mit niedriger Priorität nur <2% der Ressourcen
+benötigen, von denen man dann soviele ausführen kann, bis einer der Top X
+beendet wird, worauf umgehend Job X+1 gestartet werden soll. Für die Berechnung
+ist es notwendig, die Dauer der Laufzeiten zu kennen oder schätzen zu können,
+wozu das Setzen von Maximalzeiten hilfreich ist. Die Berechnung nach dieser
+Methode ist natürlich aufwendiger, führt aber zu einer besseren Auslastung und
+ist daher in SLURM der Default.
+
+12. Finden Sie heraus, wie Sie einen einzelnen Knoten allokieren können.
+    Allokieren Sie einen konkreten Knoten (z. B. west7 ), bauen Sie eine
+    Verbindung zu diesem Knoten auf und führen sie hostname darauf aus.
+
+salloc -p west -w west7
+srun hostname
+exit
+
+13. Wie hoch ist das Timeout auf dem Cluster, bis alle Knoten wieder freigegeben
+    werden?
+
+6 Stunden
+
+14. Wie können Sie die Priorität Ihrer Jobs nachschauen? Können Sie diese
+    verändern oder beeinflussen?
+
+sprio
+
+Prioritäten werden aus verschiedenen Faktoren berechnet, von daher nicht direkt
+änderbar. Aber man kann die Anzahl der angeforderten CPUs oder ggf. die
+Partition wechseln --> scontrol
+Siehe 11, Backfill-Scheduling: Es kann auch hilfreich sein, das Zeitlimit
+herunterzusetzen, z.B. auf eine realistisch geschätzte Laufzeit. Das ändert
+zwar nicht die Priorität, Jobs niedriger Prio aber geringem Zeit- und
+Ressourcen verbrauch kommen aber wahrscheinlich früher mal dran.
+
+15. Welche unterschiedlichen Partitionen sind auf dem Cluster eingerichtet? Wie
+    kann die zu benutzende Partition geändert werden?
+
+sinfo
+PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
+abu          up    6:00:00      5   idle abu[1-5]
+amd          up    6:00:00      3  down* amd[2-4]
+magny        up    6:00:00      1   idle magny1
+nehalem      up    6:00:00      1   idle nehalem5
+west         up    6:00:00      2  alloc west[1,7]
+west         up    6:00:00      8   idle west[2-6,8-10]
+
+Angabe der zu benutzenden Partition über salloc oder im Job-Script:
+#SBATCH --partition=west
+
+
+2 Paralleles Starten eines Shell-Scripts
+----------------------------------------
+4. Führen Sie das Script mehrmals aus.
+Frage: Was fällt Ihnen auf? Versuchen Sie Ihre Beobachtung zu erklären!
+
+Die Reihenfolge der Knoten ist jedes Mal zufällig. Nicht einmal die Reihenfolge
+der Zeilen ist chronologisch. Das hängt damit zusammen, dass der Job auf jedem
+Knoten gestartet wird, sobald dieser freie Ressourcen hat, was zu
+unterschiedlichen Startzeiten bzw. ausführenden Knoten führt. Jede Instanz
+erzeugt dann für sich eine eigene Ausgabe. Die Zusammenführung dieser Ausgaben
+zu einer einzigen Ausgabedatei erfolgt durch SLURM in nicht trivialer Weise.
+Hier kommt es wohl eher auf Übertragunsgzeiten an als den Moment der
+Ausführung.
+
+Frage: Könnte man die Datei timescript.out auch innerhalb des Scriptes
+timescript erzeugen? Falls ja: Wie? Falls nein: Warum nicht?
+
+Wie oben erwähnt, ist die finale Ausgabedatei ein Produkt aus mehreren
+Einzelausgaben pro Knoten. Die Zwischenergebnisse befinden sich lokal auf den
+ausführenden Knoten. Das Ergebnis wird dort zur Verfügung gestellt, wo der
+Anwender Zugriff hat und wo er den SLURM Client verwendet.
+Auch das Script läuft jeweils lokal als eigene Instanz und hat dort keinen
+Zugriff auf die anderen Instanzen. Das Gesamtergebnis ist also bei Ausführung
+einer timescript Instanz gar nicht bekannt und kann also nicht innerhalb
+dieser erzeugt werden.
+Eine echo anweisung im job_script dagegen, die nicht per srun aufgerufen wird,
+wird auch nicht mehrfach auf diversen Knoten ausgeführt, sondern nur einmalig
+nach Abschluss der srun Anweisung.
