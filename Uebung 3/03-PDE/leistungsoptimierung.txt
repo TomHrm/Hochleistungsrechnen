@@ -206,15 +206,14 @@ Was uns sagt dass die Funktionen caluclate() und getResidium() am meisten Rechen
 Zeiten vor Optimierung:
 
 ./partdiff-seq 1 2 64 1 2 10240:
-94.31user 
-0.00system
-1:34.35elapsed
-
-
-./partdiff-seq 1 2 64 1 2 5120:
 123.32 user
 0.00 system 
 2:03.39 elapsed
+
+./partdiff-seq 1 2 64 1 2 5120:
+94.31user 
+0.00system
+1:34.35elapsed
 
 -------------------------
 Wir fangen an die Compileroption -O3 zu übergebenen, somit kann der Compiler selbst mögliche Operitmierungen vornehmen.
@@ -259,3 +258,5 @@ Nun bekommen wir zeiten von:
 0:05.12elapsed
 
 123 sek / 5.12 = 24 fache Laufzeitoptimierung
+
+(Was für Prozessoren benutzt das Cluster? Ich das gleiche mal auf meinem alten i5 laufen lassen und bekomme gut 1 Sekunde Laufzeit und auf dem Cluster sind es 5?)
