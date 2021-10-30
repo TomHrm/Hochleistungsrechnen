@@ -1,3 +1,8 @@
+Vorab: Wir haben den malloc.h entfernt, da dieser unnötig ist und auf Mac OS Systemen einen Fehler produziert. Da es aber sowie so ein Standart header ist, ist dies ok und Speicherallokierungen findet man ebenfalls in stdlib.h
+
+Ebenfalls haben wir nach gprof den Parameter -pg wieder entfernt.
+
+
 Wir führen zunächst partdiff-seq ohne jegliche Optimierungen auf.
 Darauf führen wir nun. Den Aufruf gprof ./partdiff-seq auf um das Programm zu analysiert:
 
