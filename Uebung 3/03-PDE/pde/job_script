@@ -5,6 +5,6 @@
 #SBATCH --partition=west
 #SBATCH --output=timescript.out
 
-rm -f job_script.out
-srun timescript
+rm -f job_script.out    
+srun ./timescript.sh    
 echo fertig>job_script.out

@@ -1,2 +1,2 @@
 #!/bin/bash
-echo $(hostname -s): $(date -Ins)
+echo $(hostname -s): $(date --iso-8601=ns)
