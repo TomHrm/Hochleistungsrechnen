@@ -26,6 +26,7 @@
 #include <math.h>
 #include <malloc.h>
 #include <sys/time.h>
+#include <omp.h>
 
 #include "partdiff.h"
 
@@ -68,6 +69,7 @@ initVariables (struct calculation_arguments* arguments, struct calculation_resul
 	results->m = 0;
 	results->stat_iteration = 0;
 	results->stat_precision = 0;
+	omp_set_num_threads(options->number); // Set number of threads OpenMP should use
 }
 
 /* ************************************************************************ */
@@ -145,6 +147,8 @@ initMatrices (struct calculation_arguments* arguments, struct options const* opt
 	double const h = arguments->h;
 	double*** Matrix = arguments->Matrix;
 
+	//paralellize 3 nested for loops
+	#pragma omp parallel for collapse(3)
 	/* initialize matrix/matrices with zeros */
 	for (g = 0; g < arguments->num_matrices; g++)
 	{
@@ -160,6 +164,7 @@ initMatrices (struct calculation_arguments* arguments, struct options const* opt
 	/* initialize borders, depending on function (function 2: nothing to do) */
 	if (options->inf_func == FUNC_F0)
 	{
+		#pragma omp parallel for private(i)
 		for (g = 0; g < arguments->num_matrices; g++)
 		{
 			for (i = 0; i <= N; i++)
@@ -172,10 +177,20 @@ initMatrices (struct calculation_arguments* arguments, struct options const* opt
 		}
 	}
 }
+// Set default to ZEILEN
+#ifndef ELEMENT
+#ifndef SPALTEN
+#ifndef ZEILEN
+#define ZEILEN
+#endif
+#endif
+#endif
+
 
 /* ************************************************************************ */
 /* calculate: solves the equation                                           */
 /* ************************************************************************ */
+#ifdef ELEMENT
 static
 void
 calculate (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
@@ -202,8 +217,11 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	}
 	else
 	{
+		// Gauß Seidel nciht paralellisiert
+		printf("Gauß Seidel nciht paralellisiert");
 		m1 = 0;
 		m2 = 0;
+		exit(1);
 	}
 
 	if (options->inf_func == FUNC_FPISIN)
@@ -219,7 +237,11 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 
 		maxResiduum = 0;
 
-		/* over all rows */
+
+		// Parallelize for loop
+		// variables i,j, star, residuum are decleared outside but used as local variables
+		// Loop over all elements, calc row and col index for i
+		#pragma omp parallele for private(i,j,star,residuum) reduction(max:maxresiduum)
 		for (i = 1; i < N; i++)
 		{
 			double fpisin_i = 0.0;
@@ -275,6 +297,231 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	results->m = m2;
 }
 
+#else
+#ifdef SPALTEN
+static
+void
+calculate (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
+{
+	printf("Threadaufteilung: spaltenweise\n");
+	int i, j;           /* local variables for loops */
+	int m1, m2;         /* used as indices for old and new matrices */
+	double star;        /* four times center value minus 4 neigh.b values */
+	double residuum;    /* residuum of current iteration */
+	double maxResiduum; /* maximum residuum value of a slave in iteration */
+
+	int const N = arguments->N;
+	double const h = arguments->h;
+
+	double pih = 0.0;
+	double fpisin = 0.0;
+
+	int term_iteration = options->term_iteration;	
+
+	/* initialize m1 and m2 depending on algorithm */
+	if (options->method == METH_JACOBI)
+	{
+		m1 = 0;
+		m2 = 1;
+	}
+	else
+	{
+		// Gauß Seidel nciht paralellisiert
+		printf("Gauß Seidel nciht paralellisiert");
+		m1 = 0;
+		m2 = 0;
+		exit(1);
+	}
+
+	if (options->inf_func == FUNC_FPISIN)
+	{
+		pih = PI * h;
+		fpisin = 0.25 * TWO_PI_SQUARE * h * h;
+	}
+
+	while (term_iteration > 0)
+	{
+		double** Matrix_Out = arguments->Matrix[m1];
+		double** Matrix_In  = arguments->Matrix[m2];
+
+		maxResiduum = 0;
+
+
+		// Parallelize for loop
+		// variables i,j, star, residuum are decleared outside but used as local variables
+		// Loop over all elements, calc row and col index for i
+		#pragma omp parallele for private(i,j,star,residuum) reduction(max:maxresiduum)
+		for (i = 1; i < N; i++)
+		{
+			double fpisin_i = 0.0;
+
+			if (options->inf_func == FUNC_FPISIN)
+			{
+				fpisin_i = fpisin * sin(pih * (double)i);
+			}
+
+			/* over all columns */
+			// j will be thread local due to  omp for  statement
+			#pragma omp for
+			for (j = 1; j < N; j++)
+			{
+				star = 0.25 * (Matrix_In[i-1][j] + Matrix_In[i][j-1] + Matrix_In[i][j+1] + Matrix_In[i+1][j]);
+
+				if (options->inf_func == FUNC_FPISIN)
+				{
+					star += fpisin_i * sin(pih * (double)j);
+				}
+
+				if (options->termination == TERM_PREC || term_iteration == 1)
+				{
+					residuum = Matrix_In[i][j] - star;
+					residuum = (residuum < 0) ? -residuum : residuum;
+					maxResiduum = (residuum < maxResiduum) ? maxResiduum : residuum;
+				}
+
+				Matrix_Out[i][j] = star;
+			}
+		}
+
+		results->stat_iteration++;
+		results->stat_precision = maxResiduum;
+
+		/* exchange m1 and m2 */
+		i = m1;
+		m1 = m2;
+		m2 = i;
+
+		/* check for stopping calculation depending on termination method */
+		if (options->termination == TERM_PREC)
+		{
+			if (maxResiduum < options->term_precision)
+			{
+				term_iteration = 0;
+			}
+		}
+		else if (options->termination == TERM_ITER)
+		{
+			term_iteration--;
+		}
+	}
+
+	results->m = m2;
+}
+
+#else
+#ifdef ZEILEN
+static
+void
+calculate (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
+{
+	printf("Threadaufteilung: spaltenweise\n");
+
+	int i, j;           /* local variables for loops */
+	int m1, m2;         /* used as indices for old and new matrices */
+	double star;        /* four times center value minus 4 neigh.b values */
+	double residuum;    /* residuum of current iteration */
+	double maxResiduum; /* maximum residuum value of a slave in iteration */
+
+	int const N = arguments->N;
+	double const h = arguments->h;
+
+	double pih = 0.0;
+	double fpisin = 0.0;
+
+	int term_iteration = options->term_iteration;
+
+	/* initialize m1 and m2 depending on algorithm */
+	if (options->method == METH_JACOBI)
+	{
+		m1 = 0;
+		m2 = 1;
+	}
+	else
+	{
+		// Gauß Seidel nciht paralellisiert
+		printf("Gauß Seidel nicht paralellisiert");
+		m1 = 0;
+		m2 = 0;
+		exit(1);
+	}
+
+	if (options->inf_func == FUNC_FPISIN)
+	{
+		pih = PI * h;
+		fpisin = 0.25 * TWO_PI_SQUARE * h * h;
+	}
+
+	while (term_iteration > 0)
+	{
+		double** Matrix_Out = arguments->Matrix[m1];
+		double** Matrix_In  = arguments->Matrix[m2];
+
+		maxResiduum = 0;
+
+
+		// Parallelize for loop
+		// variables i,j, star, residuum are decleared outside but used as local variables
+		// Loop over all elements, calc row and col index for i
+		#pragma omp parallele for private(i,j,star,residuum) reduction(max:maxresiduum)
+		for (i = 1; i < N; i++)
+		{
+			double fpisin_i = 0.0;
+
+			if (options->inf_func == FUNC_FPISIN)
+			{
+				fpisin_i = fpisin * sin(pih * (double)i);
+			}
+
+			/* over all columns */
+			for (j = 1; j < N; j++)
+			{
+				star = 0.25 * (Matrix_In[i-1][j] + Matrix_In[i][j-1] + Matrix_In[i][j+1] + Matrix_In[i+1][j]);
+
+				if (options->inf_func == FUNC_FPISIN)
+				{
+					star += fpisin_i * sin(pih * (double)j);
+				}
+
+				if (options->termination == TERM_PREC || term_iteration == 1)
+				{
+					residuum = Matrix_In[i][j] - star;
+					residuum = (residuum < 0) ? -residuum : residuum;
+					maxResiduum = (residuum < maxResiduum) ? maxResiduum : residuum;
+				}
+
+				Matrix_Out[i][j] = star;
+			}
+		}
+
+		results->stat_iteration++;
+		results->stat_precision = maxResiduum;
+
+		/* exchange m1 and m2 */
+		i = m1;
+		m1 = m2;
+		m2 = i;
+
+		/* check for stopping calculation depending on termination method */
+		if (options->termination == TERM_PREC)
+		{
+			if (maxResiduum < options->term_precision)
+			{
+				term_iteration = 0;
+			}
+		}
+		else if (options->termination == TERM_ITER)
+		{
+			term_iteration--;
+		}
+	}
+
+	results->m = m2;
+}
+
+#endif
+#endif
+#endif
+
 /* ************************************************************************ */
 /*  displayStatistics: displays some statistics about the calculation       */
 /* ************************************************************************ */
@@ -287,6 +534,7 @@ displayStatistics (struct calculation_arguments const* arguments, struct calcula
 
 	printf("Berechnungszeit:    %f s \n", time);
 	printf("Speicherbedarf:     %f MiB\n", (N + 1) * (N + 1) * sizeof(double) * arguments->num_matrices / 1024.0 / 1024.0);
+	printf("Anzahl Threads:	%lu\n", options->number);
 	printf("Berechnungsmethode: ");
 
 	if (options->method == METH_GAUSS_SEIDEL)
