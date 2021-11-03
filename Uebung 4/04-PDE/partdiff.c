@@ -69,7 +69,9 @@ initVariables (struct calculation_arguments* arguments, struct calculation_resul
 	results->m = 0;
 	results->stat_iteration = 0;
 	results->stat_precision = 0;
-	omp_set_num_threads(options->number); // Set number of threads OpenMP should use
+	#ifdef _OPENMP
+		omp_set_num_threads(options->number); // Set number of threads OpenMP should use
+	#endif
 }
 
 /* ************************************************************************ */
@@ -195,7 +197,6 @@ static
 void
 calculate (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
 {
-	printf("Threadaufteilung: spaltenweise\n");
 	int i, j;           /* local variables for loops */
 	int m1, m2;         /* used as indices for old and new matrices */
 	double star;        /* four times center value minus 4 neigh.b values */
@@ -219,7 +220,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	else
 	{
 		// Gauß Seidel nciht paralellisiert
-		printf("Gauß Seidel nicht parallelisiert");
+		printf("Gauß Seidel nciht paralellisiert");
 		m1 = 0;
 		m2 = 0;
 		exit(1);
@@ -230,7 +231,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 		pih = PI * h;
 		fpisin = 0.25 * TWO_PI_SQUARE * h * h;
 	}
-#pragma omp parallele for default(none) private(i,j,star,residuum) reduction(max:maxresiduum)
+
 	while (term_iteration > 0)
 	{
 		double** Matrix_Out = arguments->Matrix[m1];
@@ -242,7 +243,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 		// Parallelize for loop
 		// variables i,j, star, residuum are decleared outside but used as local variables
 		// Loop over all elements, calc row and col index for i
-		
+		#pragma omp parallele for private(i,j,star,residuum) reduction(max:maxresiduum)
 		for (i = 1; i < N; i++)
 		{
 			double fpisin_i = 0.0;
@@ -304,7 +305,7 @@ static
 void
 calculate (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
 {
-	printf("Threadaufteilung: elementweise\n");
+	printf("Threadaufteilung: spaltenweise\n");
 	int i, j;           /* local variables for loops */
 	int m1, m2;         /* used as indices for old and new matrices */
 	double star;        /* four times center value minus 4 neigh.b values */
@@ -328,7 +329,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	else
 	{
 		// Gauß Seidel nciht paralellisiert
-		printf("Gauß Seidel nicht parallelisiert");
+		printf("Gauß Seidel nciht paralellisiert");
 		m1 = 0;
 		m2 = 0;
 		exit(1);
@@ -339,7 +340,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 		pih = PI * h;
 		fpisin = 0.25 * TWO_PI_SQUARE * h * h;
 	}
-#pragma omp parallele for default(none) private(i,j,star,residuum) reduction(max:maxresiduum)
+
 	while (term_iteration > 0)
 	{
 		double** Matrix_Out = arguments->Matrix[m1];
@@ -351,7 +352,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 		// Parallelize for loop
 		// variables i,j, star, residuum are decleared outside but used as local variables
 		// Loop over all elements, calc row and col index for i
-		
+		#pragma omp parallele for private(i,j,star,residuum) reduction(max:maxresiduum)
 		for (i = 1; i < N; i++)
 		{
 			double fpisin_i = 0.0;
@@ -415,7 +416,7 @@ static
 void
 calculate (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
 {
-	printf("Threadaufteilung: zeilenweise\n");
+	printf("Threadaufteilung: spaltenweise\n");
 
 	int i, j;           /* local variables for loops */
 	int m1, m2;         /* used as indices for old and new matrices */
@@ -440,7 +441,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	else
 	{
 		// Gauß Seidel nciht paralellisiert
-		printf("Gauß Seidel nicht parallelisiert");
+		printf("Gauß Seidel nicht paralellisiert");
 		m1 = 0;
 		m2 = 0;
 		exit(1);
@@ -451,7 +452,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 		pih = PI * h;
 		fpisin = 0.25 * TWO_PI_SQUARE * h * h;
 	}
-#pragma omp parallele for default(none) private(i,j,star,residuum) reduction(max:maxresiduum)
+
 	while (term_iteration > 0)
 	{
 		double** Matrix_Out = arguments->Matrix[m1];
@@ -463,7 +464,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 		// Parallelize for loop
 		// variables i,j, star, residuum are decleared outside but used as local variables
 		// Loop over all elements, calc row and col index for i
-		
+		#pragma omp parallele for private(i,j,star,residuum) reduction(max:maxresiduum)
 		for (i = 1; i < N; i++)
 		{
 			double fpisin_i = 0.0;
