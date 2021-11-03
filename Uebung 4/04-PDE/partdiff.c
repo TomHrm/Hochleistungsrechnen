@@ -149,7 +149,7 @@ initMatrices (struct calculation_arguments* arguments, struct options const* opt
 	double const h = arguments->h;
 	double*** Matrix = arguments->Matrix;
 
-	//paralellize 3 nested for loops
+	//parallelize 3 nested for loops
 	#pragma omp parallel for collapse(3)
 	/* initialize matrix/matrices with zeros */
 	for (g = 0; g < arguments->num_matrices; g++)
@@ -219,8 +219,8 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	}
 	else
 	{
-		// Gauß Seidel nciht paralellisiert
-		printf("Gauß Seidel nciht paralellisiert");
+		// Gauß Seidel nciht parallelisiert
+		printf("Gauß Seidel nciht parallelisiert");
 		m1 = 0;
 		m2 = 0;
 		exit(1);
@@ -231,7 +231,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 		pih = PI * h;
 		fpisin = 0.25 * TWO_PI_SQUARE * h * h;
 	}
-
+	
 	while (term_iteration > 0)
 	{
 		double** Matrix_Out = arguments->Matrix[m1];
@@ -243,7 +243,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 		// Parallelize for loop
 		// variables i,j, star, residuum are decleared outside but used as local variables
 		// Loop over all elements, calc row and col index for i
-		#pragma omp parallele for private(i,j,star,residuum) reduction(max:maxresiduum)
+		#pragma omp parallel for private(i,j,star,residuum) reduction(max:maxResiduum)
 		for (i = 1; i < N; i++)
 		{
 			double fpisin_i = 0.0;
@@ -328,8 +328,8 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	}
 	else
 	{
-		// Gauß Seidel nciht paralellisiert
-		printf("Gauß Seidel nciht paralellisiert");
+		// Gauß Seidel nciht parallelisiert
+		printf("Gauß Seidel nciht parallelisiert");
 		m1 = 0;
 		m2 = 0;
 		exit(1);
@@ -352,7 +352,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 		// Parallelize for loop
 		// variables i,j, star, residuum are decleared outside but used as local variables
 		// Loop over all elements, calc row and col index for i
-		#pragma omp parallele for private(i,j,star,residuum) reduction(max:maxresiduum)
+		#pragma omp parallel for private(i,j,star,residuum) reduction(max:maxResiduum)
 		for (i = 1; i < N; i++)
 		{
 			double fpisin_i = 0.0;
@@ -440,8 +440,8 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	}
 	else
 	{
-		// Gauß Seidel nciht paralellisiert
-		printf("Gauß Seidel nicht paralellisiert");
+		// Gauß Seidel nciht parallelisiert
+		printf("Gauß Seidel nicht parallelisiert");
 		m1 = 0;
 		m2 = 0;
 		exit(1);
@@ -464,7 +464,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 		// Parallelize for loop
 		// variables i,j, star, residuum are decleared outside but used as local variables
 		// Loop over all elements, calc row and col index for i
-		#pragma omp parallele for private(i,j,star,residuum) reduction(max:maxresiduum)
+		#pragma omp parallel for private(i,j,star,residuum) reduction(max:maxResiduum)
 		for (i = 1; i < N; i++)
 		{
 			double fpisin_i = 0.0;
@@ -642,3 +642,4 @@ main (int argc, char** argv)
 
 	return 0;
 }
+s
