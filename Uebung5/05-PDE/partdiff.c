@@ -26,6 +26,7 @@
 #include <math.h>
 #include <malloc.h>
 #include <sys/time.h>
+#include <pthread.h>
 
 #include "partdiff.h"
 
@@ -43,6 +44,30 @@ struct calculation_results
 	uint64_t  m;
 	uint64_t  stat_iteration; /* number of current iteration                    */
 	double    stat_precision; /* actual precision of all slaves in iteration    */
+};
+
+struct thread_arguments
+{
+	uint64_t  N;              /* number of spaces between lines (lines=N+1)     */
+	uint64_t  num_matrices;   /* number of matrices                             */
+	double    h;              /* length of a space between two lines            */
+	double    ***Matrix;      /* index matrix used for addressing M             */
+	double    *M; 
+
+	uint64_t  m;
+	uint64_t  stat_iteration; /* number of current iteration                    */
+	double    stat_precision; /* actual precision of all slaves in iteration    */
+
+	uint64_t number;         /* Number of threads                              */
+	uint64_t method;         /* Gauss Seidel or Jacobi method of iteration     */
+	uint64_t interlines;     /* matrix size = interlines*8+9                   */
+	uint64_t inf_func;       /* inference function                             */
+	uint64_t termination;    /* termination condition                          */
+	uint64_t term_iteration; /* terminate if iteration number reached          */
+	double   term_precision; /* terminate if precision reached                 */
+
+	int start;
+	int end;
 };
 
 /* ************************************************************************ */
@@ -176,12 +201,36 @@ initMatrices (struct calculation_arguments* arguments, struct options const* opt
 	}
 }
 
+static 
+void
+which_method(struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
+{
+	int start = 1;
+	int end = arguments->N;
+	/* initialize m1 and m2 depending on algorithm */
+	if (options->method == METH_JACOBI)
+	{
+		int num_threads = options->number;
+		pthread_t threads[num_threads];
+		int parts = arguments->N/num_threads;
+		for (int t = 0; t < num_threads; t++)
+		{
+			start = t * parts +1;
+			end = (t+1) * parts;
+			pthread_create(&threads[t], NULL,calculate, &thread_arguments);
+		}
+	}
+	else
+	{
+		calculate(&arguments, &results, &options,start,end);
+	}
+}
 /* ************************************************************************ */
 /* calculate: solves the equation                                           */
 /* ************************************************************************ */
 static
 void
-calculate (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
+calculate (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options, int start, int end)
 {
 	int i, j;           /* local variables for loops */
 	int m1, m2;         /* used as indices for old and new matrices */
@@ -197,6 +246,12 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 
 	int term_iteration = options->term_iteration;
 
+	if (options->inf_func == FUNC_FPISIN)
+	{
+		pih = PI * h;
+		fpisin = 0.25 * TWO_PI_SQUARE * h * h;
+	}
+
 	/* initialize m1 and m2 depending on algorithm */
 	if (options->method == METH_JACOBI)
 	{
@@ -207,12 +262,6 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	{
 		m1 = 0;
 		m2 = 0;
-	}
-
-	if (options->inf_func == FUNC_FPISIN)
-	{
-		pih = PI * h;
-		fpisin = 0.25 * TWO_PI_SQUARE * h * h;
 	}
 
 	while (term_iteration > 0)
@@ -385,7 +434,7 @@ main (int argc, char** argv)
 	initMatrices(&arguments, &options);
 
 	gettimeofday(&start_time, NULL);
-	calculate(&arguments, &results, &options);
+	which_method(&arguments, &results, &options);
 	gettimeofday(&comp_time, NULL);
 
 	displayStatistics(&arguments, &results, &options);
