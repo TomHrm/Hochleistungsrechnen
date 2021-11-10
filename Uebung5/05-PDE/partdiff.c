@@ -46,8 +46,10 @@ struct calculation_results
 	double    stat_precision; /* actual precision of all slaves in iteration    */
 };
 
-struct thread_arguments
+
+struct THREADARGS
 {
+
 	uint64_t  N;              /* number of spaces between lines (lines=N+1)     */
 	uint64_t  num_matrices;   /* number of matrices                             */
 	double    h;              /* length of a space between two lines            */
@@ -69,6 +71,7 @@ struct thread_arguments
 	int start;
 	int end;
 };
+
 
 /* ************************************************************************ */
 /* Global variables                                                         */
@@ -201,36 +204,12 @@ initMatrices (struct calculation_arguments* arguments, struct options const* opt
 	}
 }
 
-static 
-void
-which_method(struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
-{
-	int start = 1;
-	int end = arguments->N;
-	/* initialize m1 and m2 depending on algorithm */
-	if (options->method == METH_JACOBI)
-	{
-		int num_threads = options->number;
-		pthread_t threads[num_threads];
-		int parts = arguments->N/num_threads;
-		for (int t = 0; t < num_threads; t++)
-		{
-			start = t * parts +1;
-			end = (t+1) * parts;
-			pthread_create(&threads[t], NULL,calculate, &thread_arguments);
-		}
-	}
-	else
-	{
-		calculate(&arguments, &results, &options,start,end);
-	}
-}
 /* ************************************************************************ */
 /* calculate: solves the equation                                           */
 /* ************************************************************************ */
 static
 void
-calculate (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options, int start, int end)
+calculate (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
 {
 	int i, j;           /* local variables for loops */
 	int m1, m2;         /* used as indices for old and new matrices */
@@ -325,6 +304,166 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	}
 
 	results->m = m2;
+}
+
+static
+void
+*calculate_in_threads (void * threadargs_void)
+{
+	struct THREADARGS * threadargs = (struct THREADARGS *) threadargs_void;
+	int i, j;           /* local variables for loops */
+	int m1, m2;         /* used as indices for old and new matrices */
+	double star;        /* four times center value minus 4 neigh.b values */
+	double residuum;    /* residuum of current iteration */
+	double maxResiduum; /* maximum residuum value of a slave in iteration */
+
+	int const start = threadargs->start;
+	int const end = threadargs->end;
+	int const N = threadargs->N;
+	double const h = threadargs->h;
+
+	double pih = 0.0;
+	double fpisin = 0.0;
+
+	int term_iteration = threadargs->term_iteration;
+
+	if (threadargs->inf_func == FUNC_FPISIN)
+	{
+		pih = PI * h;
+		fpisin = 0.25 * TWO_PI_SQUARE * h * h;
+	}
+
+	/* initialize m1 and m2 depending on algorithm */
+	if (threadargs->method == METH_JACOBI)
+	{
+		m1 = 0;
+		m2 = 1;
+	}
+	else
+	{
+		m1 = 0;
+		m2 = 0;
+	}
+	
+	while (term_iteration > 0)
+	{
+		pthread_barrier_t barrier;
+		pthread_barrier_init(&barrier, NULL, threadargs->number);
+		double** Matrix_Out = threadargs->Matrix[m1];
+		double** Matrix_In  = threadargs->Matrix[m2];
+
+		maxResiduum = 0;
+		/* over all rows */
+		for (i = start; i < end; i++)
+		{
+			double fpisin_i = 0.0;
+
+			if (threadargs->inf_func == FUNC_FPISIN)
+			{
+				fpisin_i = fpisin * sin(pih * (double)i);
+			}
+
+			/* over all columns */
+			for (j = 1; j < N; j++)
+			{
+				star = 0.25 * (Matrix_In[i-1][j] + Matrix_In[i][j-1] + Matrix_In[i][j+1] + Matrix_In[i+1][j]);
+
+				if (threadargs->inf_func == FUNC_FPISIN)
+				{
+					star += fpisin_i * sin(pih * (double)j);
+				}
+
+				if (threadargs->termination == TERM_PREC || term_iteration == 1)
+				{
+					residuum = Matrix_In[i][j] - star;
+					residuum = (residuum < 0) ? -residuum : residuum;
+					maxResiduum = (residuum < maxResiduum) ? maxResiduum : residuum;
+				}
+
+				Matrix_Out[i][j] = star;
+			}
+		}
+		printf("\nJowasgeht\nJowasgeht\nJowasgeht\nJowasgeht\nJowasgeht\nJowasgeht");
+		pthread_barrier_wait(&barrier);
+
+		threadargs->stat_iteration++;
+		threadargs->stat_precision = maxResiduum;
+
+		/* exchange m1 and m2 */
+		i = m1;
+		m1 = m2;
+		m2 = i;
+
+		/* check for stopping calculation depending on termination method */
+		if (threadargs->termination == TERM_PREC)
+		{
+			if (maxResiduum < threadargs->term_precision)
+			{
+				term_iteration = 0;
+			}
+		}
+		else if (threadargs->termination == TERM_ITER)
+		{
+			term_iteration--;
+		}
+	}
+
+	threadargs->m = m2;
+	return NULL;
+}
+
+static 
+void
+which_method(struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
+{
+	int start = 1;
+	int end = arguments->N;
+	/* initialize m1 and m2 depending on algorithm */
+	if (options->method == METH_JACOBI)
+	{
+		struct THREADARGS threadarg;
+		int num_threads = options->number;
+		struct THREADARGS* thread_arg_array = malloc((sizeof threadarg) * num_threads);
+		pthread_t threaddummy;
+		pthread_t* threads = malloc((sizeof threaddummy) * num_threads);
+		for (int t = 0; t < num_threads; t++)
+		{
+			start = (t* arguments->N)/num_threads;
+			end = ((t+1)* arguments->N)/num_threads;
+			thread_arg_array[t].N = arguments->N;
+			thread_arg_array[t].h = arguments->h;
+			thread_arg_array[t].M = arguments->M;
+			thread_arg_array[t].Matrix = arguments->Matrix;
+			thread_arg_array[t].num_matrices = arguments->num_matrices;
+
+			thread_arg_array[t].m = results->m;
+			thread_arg_array[t].stat_iteration = results->stat_iteration;
+			thread_arg_array[t].stat_precision = results->stat_precision;
+
+			thread_arg_array[t].inf_func = options->inf_func;
+			thread_arg_array[t].interlines = options->interlines;
+			thread_arg_array[t].method = options->method;
+			thread_arg_array[t].number = options->number;
+			thread_arg_array[t].term_iteration = options->term_iteration;
+			thread_arg_array[t].term_precision = options->term_precision;
+			thread_arg_array[t].termination = options->termination;
+
+			thread_arg_array[t].start = start;
+			thread_arg_array[t].end = end;
+			pthread_create(&threads[t], NULL, calculate_in_threads, &thread_arg_array[t]);
+		}
+		for (int t = 0; t < num_threads; t++)
+			{
+				pthread_join(threads[t], NULL);
+			}
+		
+		free(thread_arg_array);
+		free(threads);
+	}
+	else
+	{
+		calculate(arguments, results, options);
+	}
 }
 
 /* ************************************************************************ */
@@ -434,6 +573,7 @@ main (int argc, char** argv)
 	initMatrices(&arguments, &options);
 
 	gettimeofday(&start_time, NULL);
+
 	which_method(&arguments, &results, &options);
 	gettimeofday(&comp_time, NULL);
 
