@@ -46,7 +46,8 @@ struct calculation_results
 	double    stat_precision; /* actual precision of all slaves in iteration    */
 };
 
-
+// Ein struct, dass alle wichtigen Variablen enthält, damit der einzelne Thread
+// auf alle Parameter für die ausführende Funktion Zugriff hat
 struct THREADARGS
 {
 
@@ -67,6 +68,8 @@ struct THREADARGS
 	uint64_t termination;    /* termination condition                          */
 	uint64_t term_iteration; /* terminate if iteration number reached          */
 	double   term_precision; /* terminate if precision reached                 */
+
+	pthread_barrier_t *barriers;
 
 	int start;
 	int end;
@@ -306,7 +309,7 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	results->m = m2;
 }
 
-static
+
 void
 *calculate_in_threads (void * threadargs_void)
 {
@@ -326,7 +329,6 @@ void
 	double fpisin = 0.0;
 
 	int term_iteration = threadargs->term_iteration;
-
 	if (threadargs->inf_func == FUNC_FPISIN)
 	{
 		pih = PI * h;
@@ -347,8 +349,8 @@ void
 	
 	while (term_iteration > 0)
 	{
-		pthread_barrier_t barrier;
-		pthread_barrier_init(&barrier, NULL, threadargs->number);
+		//pthread_barrier_t barrier;
+		//pthread_barrier_init(&barrier, NULL, threadargs->number);
 		double** Matrix_Out = threadargs->Matrix[m1];
 		double** Matrix_In  = threadargs->Matrix[m2];
 
@@ -383,8 +385,8 @@ void
 				Matrix_Out[i][j] = star;
 			}
 		}
-		printf("\nJowasgeht\nJowasgeht\nJowasgeht\nJowasgeht\nJowasgeht\nJowasgeht");
-		pthread_barrier_wait(&barrier);
+		//printf("Thread am Warten: Barriere %ld\n",threadargs->stat_iteration);
+		pthread_barrier_wait(&threadargs->barriers[threadargs->stat_iteration]);
 
 		threadargs->stat_iteration++;
 		threadargs->stat_precision = maxResiduum;
@@ -416,20 +418,28 @@ static
 void
 which_method(struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
 {
+	int const N = arguments->N;
 	int start = 1;
-	int end = arguments->N;
+	int end = N;
 	/* initialize m1 and m2 depending on algorithm */
 	if (options->method == METH_JACOBI)
 	{
-		struct THREADARGS threadarg;
+		//struct THREADARGS threadarg;
 		int num_threads = options->number;
-		struct THREADARGS* thread_arg_array = malloc((sizeof threadarg) * num_threads);
-		pthread_t threaddummy;
-		pthread_t* threads = malloc((sizeof threaddummy) * num_threads);
+		struct THREADARGS thread_arg_array[num_threads];
+		//pthread_t threaddummy;
+		pthread_t threads[num_threads];
+		//pthread_t* threads = malloc((sizeof threaddummy) * num_threads);
+		uint64_t itn = options->term_iteration;
+		pthread_barrier_t barriers[itn];
+		for (uint64_t it = 0; it < itn; it++)
+		{
+			pthread_barrier_init(&barriers[it], NULL, num_threads);
+		}
 		for (int t = 0; t < num_threads; t++)
 		{
-			start = (t* arguments->N)/num_threads;
-			end = ((t+1)* arguments->N)/num_threads;
+			start = (t*(N-1))/num_threads + 1;
+			end = ((t+1)*(N-1))/num_threads + 1;
 			thread_arg_array[t].N = arguments->N;
 			thread_arg_array[t].h = arguments->h;
 			thread_arg_array[t].M = arguments->M;
@@ -450,15 +460,22 @@ which_method(struct calculation_arguments const* arguments, struct calculation_r
 
 			thread_arg_array[t].start = start;
 			thread_arg_array[t].end = end;
-			pthread_create(&threads[t], NULL, calculate_in_threads, &thread_arg_array[t]);
+			thread_arg_array[t].barriers = barriers;
+			pthread_create(&threads[t], NULL, &calculate_in_threads,(void *) &thread_arg_array[t]);
 		}
 		for (int t = 0; t < num_threads; t++)
 			{
 				pthread_join(threads[t], NULL);
 			}
 		
-		free(thread_arg_array);
-		free(threads);
+		//free(thread_arg_array);
+		//free(threads);
+		results->stat_iteration = thread_arg_array[0].stat_iteration;
+
+		double max_resi = thread_arg_array[0].stat_precision;
+		for (int t = 1; t < num_threads; t++)
+        	if (thread_arg_array[t].stat_precision > max_resi)
+            	results->stat_precision = thread_arg_array[t].stat_precision;
 	}
 	else
 	{
