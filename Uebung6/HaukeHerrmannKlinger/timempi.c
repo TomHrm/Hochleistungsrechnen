@@ -7,9 +7,9 @@
 #include <time.h>
 #include <mpi.h>
 
-int main(void) {
+int main(int argc, char *argv[]) {
     // init MPI Environment
-    MPI_Init(NULL, NULL);
+    MPI_Init(&argc, &argv);
 
     // get number of processes
     int world_size;
@@ -44,12 +44,9 @@ int main(void) {
         MPI_Send(&output, 80, MPI_CHAR, world_size - 1, 0, MPI_COMM_WORLD);
         MPI_Send(&micro_sec, 1, MPI_INT, world_size - 1, 0, MPI_COMM_WORLD);
         // message Feedback empfangen
+        MPI_Barrier(MPI_COMM_WORLD);
         MPI_Recv(&message, 1, MPI_INT, world_size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         // wenn message == 1 dann erfolgreich
-        if(message == 1)
-        {
-            printf("[%d] beendet jetzt!\n", world_rank);
-        }
     }   
     else
     {
@@ -81,15 +78,28 @@ int main(void) {
             }
             printf("[%d] Kleinseter MS_Anteil: %d \n",world_rank, min);
             printf("[%d] Größte Differenz: %d \n", world_rank, max-min);
+
+
+            //Obwohl wir mehrere Barriers haben, kann die Reihenfolge der Prints nur so eingehalten werden
+            //Das ist nicht schön.
+            sleep(1);
+
+
+            MPI_Barrier(MPI_COMM_WORLD);
             for (int i = 0; i < world_size-1; i++)
             {
                 message = 1;
                 MPI_Send(&message, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
             }
         }
+        message = 1;
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+    // finalize MPI Environment
+    if(message == 1)
+    {
         printf("[%d] beendet jetzt!\n", world_rank);
     }
-    // finalize MPI Environment
     MPI_Finalize();
 
     // printf("%s\n", output);
