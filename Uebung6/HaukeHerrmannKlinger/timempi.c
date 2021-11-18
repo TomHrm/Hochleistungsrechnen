@@ -26,7 +26,7 @@ int main(void) {
     char output[80];
     char hostname[30];
     // declare message feedback
-    int message;
+    int message = 0;
 
     gettimeofday(&tv, NULL);
     gethostname(hostname, 30);
@@ -42,6 +42,7 @@ int main(void) {
         snprintf(output, 80, "[%d] %s : %s.%d\n",world_rank, hostname, time_string, (int)micro_sec);
         // output senden
         MPI_Send(&output, 80, MPI_CHAR, world_size - 1, 0, MPI_COMM_WORLD);
+        MPI_Send(&micro_sec, 1, MPI_INT, world_size - 1, 0, MPI_COMM_WORLD);
         // message Feedback empfangen
         MPI_Recv(&message, 1, MPI_INT, world_size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         // wenn message == 1 dann erfolgreich
@@ -56,15 +57,30 @@ int main(void) {
         if(world_size == 1)
         {
             printf("[%d] %s : %s.%d\n",world_rank, hostname, time_string, (int)micro_sec);
-
+            printf("[%d] Kleinseter MS_Anteil: %d \n",world_rank, micro_sec);
+            printf("[%d] Größte Differenz: %d \n", world_rank, 0);
         }
         else
         {
+            int buffer;
+            int min = 999999;
+            int max = 0;
             for (int i = 0; i < world_size-1; i++)
             {
                 MPI_Recv(&output, 80, MPI_CHAR, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(&buffer, 1, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                if(buffer < min)
+                {
+                    min = buffer;
+                }
+                if(buffer > max)
+                {
+                    max = buffer;
+                }
                 printf("%s", output);
             }
+            printf("[%d] Kleinseter MS_Anteil: %d \n",world_rank, min);
+            printf("[%d] Größte Differenz: %d \n", world_rank, max-min);
             for (int i = 0; i < world_size-1; i++)
             {
                 message = 1;
