@@ -22,29 +22,81 @@ init (int N, int rank)
 }
 
 int
-circle (int* buf, int size, int rank, int N_lokal, int number_to_check)
+circle (int* buf, int size, int rank, int *N_lokal, int number_to_check)
 {
-	int iterationen = 0
+	int iterationen = -1;
 	int fertig = 0;
+	int new_N_lokal;
+	//Puffer für Arrayabschnittinhalt
+	int puffer[*N_lokal];
 
-
-
-	//Überprüfen, ob Iteration abgebrochen werden muss
-	if (rank == size - 1)
+	while (fertig == 0)
 	{
-		if (buf[0] == number_to_check)
+		//Größe der einzelnen Array Abschnitte übermitteln
+		if (rank == 0)
 		{
-			fertig = 1;
+			MPI_Ssend(N_lokal, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+			MPI_Recv(&new_N_lokal, 1, MPI_INT, size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		}
-		for (i = 0; i < size - 1; i++)
+		else
 		{
-			MPI_Ssend(&number_to_check, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+			MPI_Recv(&new_N_lokal, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			if (rank < size - 1)
+			{
+				MPI_Ssend(N_lokal, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+			}
+			else
+			{
+				MPI_Ssend(N_lokal, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+			}
 		}
+
+		//Inhalte der Arrays übergeben
+		if (rank == 0)
+		{
+			MPI_Ssend(buf, *N_lokal, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+			MPI_Recv(buf, new_N_lokal, MPI_INT, size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		}
+		else
+		{
+			//alten Array Inhalt zwischenspeichern
+			for (int i = 0; i<*N_lokal; i++)
+			{
+				puffer[i]=buf[i];
+			}
+			MPI_Recv(buf, new_N_lokal, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			if (rank < size - 1)
+			{
+				MPI_Ssend(puffer, *N_lokal, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+			}
+			else
+			{
+				MPI_Ssend(puffer, *N_lokal, MPI_INT, 0, 0, MPI_COMM_WORLD);
+			}
+		}
+
+		//Arraygröße aktualisieren
+		*N_lokal = new_N_lokal;
+
+		//Überprüfen, ob Iteration abgebrochen werden muss
+		if (rank == size - 1)
+		{
+			if (buf[0] == number_to_check)
+			{
+				fertig = 1;
+			}
+			for (int i = 0; i < size - 1; i++)
+			{
+				MPI_Ssend(&fertig, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+			}
+		}
+		else
+		{
+			MPI_Recv(&fertig, 1, MPI_INT, size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		}
+		iterationen++;
 	}
-	if fertig = 1
-	{
-		return 0;
-	}
+	return iterationen;
 }
 
 int
@@ -84,10 +136,27 @@ main (int argc, char** argv)
 	start_lokal = (N*rank)/size;
 	end_lokal = (N*(rank + 1))/size;
 	N_lokal = end_lokal - start_lokal;
-	//printf("%d: start ist %d, ende ist %d\n", rank, start_lokal, end_lokal);
+	printf("%d: start ist %d, ende ist %d\n", rank, start_lokal, end_lokal);
 
 	// Teilarray initialisieren
 	buf = init(N_lokal, rank);
+
+	//Falls nur ein Prozess
+	if (size == 1)
+	{
+		printf("\nBEFORE\n");
+		for (int i = 0; i < N_lokal; i++)
+		{
+			printf("rank %d: %d\n", rank, buf[i]);
+		}
+		printf("\nIterationen:%d, Abbruchwert:%d\n\n",0, buf[0]);
+		printf("\nAFTER\n");
+		for (int i = 0; i < N_lokal; i++)
+		{
+			printf("rank %d: %d\n", rank, buf[i]);
+		}
+		return EXIT_SUCCESS;
+	}
 
 	if (rank == 0)
 	{
@@ -128,7 +197,7 @@ main (int argc, char** argv)
 	}
 	MPI_Barrier(MPI_COMM_WORLD);
 
-	ret = circle(buf, size, rank, N_lokal, number_to_check);
+	ret = circle(buf, size, rank, &N_lokal, number_to_check);
 
 	MPI_Barrier(MPI_COMM_WORLD);
 	sleep(0.1);
@@ -136,6 +205,7 @@ main (int argc, char** argv)
 	//Ausgabe wie am Anfang nur mit "AFTER"
 	if (rank == 0)
 	{
+		printf("\nIterationen:%d, Abbruchwert:%d\n\n",ret, number_to_check);
 		printf("\nAFTER\n");
 		for (int i = 0; i < N_lokal; i++)
 		{
