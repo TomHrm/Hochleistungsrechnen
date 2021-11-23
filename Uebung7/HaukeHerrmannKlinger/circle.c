@@ -1,14 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <mpi.h>
 
 int*
-init (int N)
-{
-	// TODO
-	int* buf = (int*)malloc(sizeof(int) * N);
+init (int N, int rank)
+{	
+	//Größe + ein Puffer allokieren
+	int* buf = (int*)malloc(sizeof(int) * (N + 1));
 
-	srand(time(NULL));
+	//jeder Prozess eigenen Zufallsseed
+	srand(time(NULL) + rank);
 
 	for (int i = 0; i < N; i++)
 	{
@@ -20,10 +22,29 @@ init (int N)
 }
 
 int
-circle (int* buf)
+circle (int* buf, int size, int rank, int N_lokal, int number_to_check)
 {
-	// TODO
-	return 0;
+	int iterationen = 0
+	int fertig = 0;
+
+
+
+	//Überprüfen, ob Iteration abgebrochen werden muss
+	if (rank == size - 1)
+	{
+		if (buf[0] == number_to_check)
+		{
+			fertig = 1;
+		}
+		for (i = 0; i < size - 1; i++)
+		{
+			MPI_Ssend(&number_to_check, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+		}
+	}
+	if fertig = 1
+	{
+		return 0;
+	}
 }
 
 int
@@ -32,36 +53,107 @@ main (int argc, char** argv)
 	int N;
 	int rank;
 	int* buf;
-  int ret;
+    int ret;
+	int N_lokal;
+	int start_lokal;
+	int end_lokal;
+	int number_to_check;
+	int size;
+	int signal = 0;
 
+    // init MPI Environment
+    MPI_Init(NULL, NULL);
+
+    // get number of processes
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    // get rank of process
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    
 	if (argc < 2)
 	{
 		printf("Arguments error!\nPlease specify a buffer size.\n");
 		return EXIT_FAILURE;
 	}
-
-	// Array length
+	
+	// gesamtes Array length
 	N = atoi(argv[1]);
-	buf = init(N);
 
-	// TODO
-	rank = 0;
+	// Position im gesamten Array
+	start_lokal = (N*rank)/size;
+	end_lokal = (N*(rank + 1))/size;
+	N_lokal = end_lokal - start_lokal;
+	//printf("%d: start ist %d, ende ist %d\n", rank, start_lokal, end_lokal);
 
-	printf("\nBEFORE\n");
+	// Teilarray initialisieren
+	buf = init(N_lokal, rank);
 
-	for (int i = 0; i < N; i++)
+	if (rank == 0)
 	{
-		printf("rank %d: %d\n", rank, buf[i]);
+		number_to_check = buf[0];
+		MPI_Ssend(&number_to_check, 1, MPI_INT, size - 1, 0, MPI_COMM_WORLD);
+		//printf("%d\n", number_to_check);
+	}
+	if (rank == size - 1)
+	{
+		MPI_Recv(&number_to_check, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		//printf("%d\n", number_to_check);
 	}
 
-	ret = circle(buf);
 
-	printf("\nAFTER\n");
-
-	for (int j = 0; j < N; j++)
+	//Erster Prozess printet zuerst
+	if (rank == 0)
 	{
-		printf("rank %d: %d\n", rank, buf[j]);
+		printf("\nBEFORE\n");
+		for (int i = 0; i < N_lokal; i++)
+		{
+			printf("rank %d: %d\n", rank, buf[i]);
+		}
+	}
+	else 
+	{
+		//Prozesse printen ihren Teil nach dem Vorgänger
+		MPI_Recv(&signal, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		for (int i = 0; i < N_lokal; i++)
+		{
+			printf("rank %d: %d\n", rank, buf[i]);
+		}
 	}
 
+	//Alle Prozesse geben ein Signal an den Nachfolger
+	if (rank < size - 1)
+	{
+		MPI_Ssend(&signal, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+	}
+	MPI_Barrier(MPI_COMM_WORLD);
+
+	ret = circle(buf, size, rank, N_lokal, number_to_check);
+
+	MPI_Barrier(MPI_COMM_WORLD);
+	sleep(0.1);
+
+	//Ausgabe wie am Anfang nur mit "AFTER"
+	if (rank == 0)
+	{
+		printf("\nAFTER\n");
+		for (int i = 0; i < N_lokal; i++)
+		{
+			printf("rank %d: %d\n", rank, buf[i]);
+		}
+	}
+	else 
+	{
+		MPI_Recv(&signal, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		for (int i = 0; i < N_lokal; i++)
+		{
+			printf("rank %d: %d\n", rank, buf[i]);
+		}
+	}
+	if (rank < size - 1)
+	{
+		MPI_Ssend(&signal, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+	}
+	MPI_Barrier(MPI_COMM_WORLD);
 	return EXIT_SUCCESS;
 }
