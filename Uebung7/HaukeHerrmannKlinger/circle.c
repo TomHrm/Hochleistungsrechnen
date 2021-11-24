@@ -169,7 +169,7 @@ main (int argc, char** argv)
 		start_lokal = (N*rank)/size;
 		end_lokal = (N*(rank + 1))/size;
 		N_lokal = end_lokal - start_lokal;
-		printf("%d: start ist %d, ende ist %d\n", rank, start_lokal, end_lokal);
+		//printf("%d: start ist %d, ende ist %d\n", rank, start_lokal, end_lokal);
 	}
 	// Teilarray initialisieren
 	buf = init(N_lokal, rank);
