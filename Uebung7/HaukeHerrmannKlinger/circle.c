@@ -1,15 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
 #include <mpi.h>
 
 int*
 init (int N, int rank)
 {	
-	//Größe + ein Puffer allokieren
+	// Größe + ein Puffer allokieren
 	int* buf = (int*)malloc(sizeof(int) * (N + 1));
 
-	//jeder Prozess eigenen Zufallsseed
+	// jeder Prozess eigenen Zufallsseed
 	srand(time(NULL) + rank);
 
 	for (int i = 0; i < N; i++)
@@ -24,20 +25,31 @@ init (int N, int rank)
 int
 circle (int* buf, int size, int rank, int *N_lokal, int number_to_check)
 {
+	// Iterationen bei -1 starten, da laut Beispiel nach einem "Schritt" i=0
 	int iterationen = -1;
+	// Prüfvariable, ob Endzustand erreicht ist
 	int fertig = 0;
-	int new_N_lokal;
-	//Puffer für Arrayabschnittinhalt
+	// Neue Größe für empfangendes Array
+	int new_N_lokal = 0;
+	// Puffer für Arrayabschnittinhalt
 	int puffer[*N_lokal];
+
+	// Prozesse, die keine Arrays halten, können sofort beenden (bei nprocs > N)
+	if (rank>=size)
+	{
+		fertig = 1;
+	}
 
 	while (fertig == 0)
 	{
-		//Größe der einzelnen Array Abschnitte übermitteln
+		// Größe der einzelnen Array Abschnitte übermitteln
+		// erster Prozess beginnt
 		if (rank == 0)
 		{
 			MPI_Ssend(N_lokal, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
 			MPI_Recv(&new_N_lokal, 1, MPI_INT, size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		}
+		// alle anderen Prozesse schicken an nächsten, außer der letzte, der schickt an den ersten
 		else
 		{
 			MPI_Recv(&new_N_lokal, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -51,7 +63,7 @@ circle (int* buf, int size, int rank, int *N_lokal, int number_to_check)
 			}
 		}
 
-		//Inhalte der Arrays übergeben
+		// Inhalte der Arrays übergeben, gleiches Prinzip wie bei Größenübermittlung
 		if (rank == 0)
 		{
 			MPI_Ssend(buf, *N_lokal, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
@@ -59,11 +71,12 @@ circle (int* buf, int size, int rank, int *N_lokal, int number_to_check)
 		}
 		else
 		{
-			//alten Array Inhalt zwischenspeichern
+			// alten Array Inhalt zwischenspeichern
 			for (int i = 0; i<*N_lokal; i++)
 			{
 				puffer[i]=buf[i];
 			}
+			// Zwischenspeicher muss weitergeschickt werden, da dies der ursprüngliche Wert ist
 			MPI_Recv(buf, new_N_lokal, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			if (rank < size - 1)
 			{
@@ -132,16 +145,36 @@ main (int argc, char** argv)
 	// gesamtes Array length
 	N = atoi(argv[1]);
 
-	// Position im gesamten Array
-	start_lokal = (N*rank)/size;
-	end_lokal = (N*(rank + 1))/size;
-	N_lokal = end_lokal - start_lokal;
-	printf("%d: start ist %d, ende ist %d\n", rank, start_lokal, end_lokal);
-
+	// mehr Prozesse als N => nur N Prozesse nutzen, alle jeweils mit einem Eintrag
+	// In diesem Fall ist der "letzte Prozess" also der mit rank == size - 1
+	if (size > N)
+	{
+		size = N;
+		if (rank < size)
+		{
+			N_lokal = 1;
+			start_lokal = rank;
+			end_lokal = rank + 1;
+		}
+		else
+		{
+			N_lokal = 0;
+			start_lokal = size;
+			end_lokal = size;
+		}
+	}
+	else
+	{
+		// Position im gesamten Array; Anzahl eigener Werte
+		start_lokal = (N*rank)/size;
+		end_lokal = (N*(rank + 1))/size;
+		N_lokal = end_lokal - start_lokal;
+		printf("%d: start ist %d, ende ist %d\n", rank, start_lokal, end_lokal);
+	}
 	// Teilarray initialisieren
 	buf = init(N_lokal, rank);
 
-	//Falls nur ein Prozess
+	// Falls nur ein Prozess, Lösung trivial
 	if (size == 1)
 	{
 		printf("\nBEFORE\n");
@@ -158,6 +191,7 @@ main (int argc, char** argv)
 		return EXIT_SUCCESS;
 	}
 
+	// Letzer Prozess erhält vom ersten die zu überprüfende Nummer
 	if (rank == 0)
 	{
 		number_to_check = buf[0];
@@ -171,7 +205,7 @@ main (int argc, char** argv)
 	}
 
 
-	//Erster Prozess printet zuerst
+	// Erster Prozess printet zuerst
 	if (rank == 0)
 	{
 		printf("\nBEFORE\n");
@@ -180,9 +214,9 @@ main (int argc, char** argv)
 			printf("rank %d: %d\n", rank, buf[i]);
 		}
 	}
-	else 
+	if (rank < size && rank > 0)
 	{
-		//Prozesse printen ihren Teil nach dem Vorgänger
+		// Prozesse printen ihren Teil nach dem Vorgänger
 		MPI_Recv(&signal, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		for (int i = 0; i < N_lokal; i++)
 		{
@@ -190,7 +224,7 @@ main (int argc, char** argv)
 		}
 	}
 
-	//Alle Prozesse geben ein Signal an den Nachfolger
+	// Prozesse geben ein Signal zum printen an den Nachfolger
 	if (rank < size - 1)
 	{
 		MPI_Ssend(&signal, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
@@ -200,9 +234,11 @@ main (int argc, char** argv)
 	ret = circle(buf, size, rank, &N_lokal, number_to_check);
 
 	MPI_Barrier(MPI_COMM_WORLD);
+
+	// Print funktioniert sonst nicht richtig (Workaround, keine Ahnung ob besser möglich)
 	sleep(0.1);
 
-	//Ausgabe wie am Anfang nur mit "AFTER"
+	// Ausgabe wie am Anfang nur mit "AFTER"
 	if (rank == 0)
 	{
 		printf("\nIterationen:%d, Abbruchwert:%d\n\n",ret, number_to_check);
@@ -212,7 +248,7 @@ main (int argc, char** argv)
 			printf("rank %d: %d\n", rank, buf[i]);
 		}
 	}
-	else 
+	if (rank < size && rank > 0)
 	{
 		MPI_Recv(&signal, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		for (int i = 0; i < N_lokal; i++)
@@ -224,6 +260,10 @@ main (int argc, char** argv)
 	{
 		MPI_Ssend(&signal, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
 	}
+
+	// Speicher freigeben
+	free(buf);
+
 	MPI_Barrier(MPI_COMM_WORLD);
 	return EXIT_SUCCESS;
 }
