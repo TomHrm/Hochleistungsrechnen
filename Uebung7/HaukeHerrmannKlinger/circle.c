@@ -264,6 +264,6 @@ main (int argc, char** argv)
 	// Speicher freigeben
 	free(buf);
 
-	MPI_Barrier(MPI_COMM_WORLD);
+	MPI_Finalize();
 	return EXIT_SUCCESS;
 }
