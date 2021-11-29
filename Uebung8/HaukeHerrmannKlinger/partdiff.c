@@ -26,6 +26,7 @@
 #include <math.h>
 #include <malloc.h>
 #include <sys/time.h>
+#include <mpi.h>
 
 #include "partdiff.h"
 
@@ -192,6 +193,13 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	double pih = 0.0;
 	double fpisin = 0.0;
 
+	// get number of processes
+    int world_size;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    // get rank of process
+    int world_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
 	int term_iteration = options->term_iteration;
 
 	/* initialize m1 and m2 depending on algorithm */
@@ -273,6 +281,8 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	}
 
 	results->m = m2;
+	// finalize MPI Environment
+	MPI_Finalize();
 }
 
 /* ************************************************************************ */
