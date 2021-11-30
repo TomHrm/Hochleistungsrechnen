@@ -46,6 +46,15 @@ struct calculation_results
 	double    stat_precision; /* actual precision of all slaves in iteration    */
 };
 
+struct mpi_parameters
+{
+	int world_size;
+	int world_rank;
+	uint64_t start_r;
+	uint64_t end_r;
+	uint64_t N_r;
+};
+
 /* ************************************************************************ */
 /* Global variables                                                         */
 /* ************************************************************************ */
@@ -113,22 +122,24 @@ allocateMemory (size_t size)
 /* ************************************************************************ */
 static
 void
-allocateMatrices (struct calculation_arguments* arguments)
+allocateMatrices (struct calculation_arguments* arguments, struct mpi_parameters* mpi_paras)
 {
 	uint64_t i, j;
 
 	uint64_t const N = arguments->N;
+	uint64_t const N_r = mpi_paras->N_r;
 
-	arguments->M = allocateMemory(arguments->num_matrices * (N + 1) * (N + 1) * sizeof(double));
+	arguments->M = allocateMemory(arguments->num_matrices * (N_r + 2) * (N + 1) * sizeof(double));
+	MPI_Barrier(MPI_COMM_WORLD);
 	arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
-
+	MPI_Barrier(MPI_COMM_WORLD);
 	for (i = 0; i < arguments->num_matrices; i++)
 	{
-		arguments->Matrix[i] = allocateMemory((N + 1) * sizeof(double*));
+		arguments->Matrix[i] = allocateMemory((N_r + 2) * sizeof(double*));
 
-		for (j = 0; j <= N; j++)
+		for (j = 0; j <= N_r + 1; j++)
 		{
-			arguments->Matrix[i][j] = arguments->M + (i * (N + 1) * (N + 1)) + (j * (N + 1));
+			arguments->Matrix[i][j] = arguments->M + (i * (N + 1) * (N_r + 2)) + (j * (N + 1));
 		}
 	}
 }
@@ -138,18 +149,19 @@ allocateMatrices (struct calculation_arguments* arguments)
 /* ************************************************************************ */
 static
 void
-initMatrices (struct calculation_arguments* arguments, struct options const* options)
+initMatrices (struct calculation_arguments* arguments, struct options const* options, struct mpi_parameters* mpi_paras)
 {
 	uint64_t g, i, j; /* local variables for loops */
 
 	uint64_t const N = arguments->N;
+	uint64_t const N_r = mpi_paras->N_r;
 	double const h = arguments->h;
 	double*** Matrix = arguments->Matrix;
 
 	/* initialize matrix/matrices with zeros */
 	for (g = 0; g < arguments->num_matrices; g++)
 	{
-		for (i = 0; i <= N; i++)
+		for (i = 0; i <= N_r + 1; i++)
 		{
 			for (j = 0; j <= N; j++)
 			{
@@ -161,14 +173,35 @@ initMatrices (struct calculation_arguments* arguments, struct options const* opt
 	/* initialize borders, depending on function (function 2: nothing to do) */
 	if (options->inf_func == FUNC_F0)
 	{
-		for(i = 0; i < N; i++)
+		uint64_t start_r = mpi_paras->start_r;
+		for(i = 0; i < N_r + 2; i++)
 		{
 			for (j = 0; j < arguments->num_matrices; j++)
 			{
-				Matrix[j][i][0] = 1 + (1 - (h * i)); // Linke Kante
-				Matrix[j][N][i] = 1 - (h * i); // Untere Kante
-				Matrix[j][N - i][N] = h * i; // Rechte Kante
-				Matrix[j][0][N - i] = 1 + h * i; // Obere Kante
+				Matrix[j][i][0] = 1 + (1 - (h * (i+start_r-1))); // Linke Kante
+				Matrix[j][i][N] = 1 - h * (i+start_r-1); // Rechte Kante
+				
+				//Matrix[j][i][N] = h * (i+start_r-1); // Rechte Kante
+			}
+		}
+		if (mpi_paras->world_rank == 0)
+		{
+			for(i = 0; i < N; i++)
+			{
+				for (j = 0; j < arguments->num_matrices; j++)
+				{
+					Matrix[j][0][N - i] = 1 + h * i; // Obere Kante
+				}
+			}
+		}
+		if (mpi_paras->world_rank == mpi_paras->world_size - 1)
+		{
+			for(i = 0; i < N; i++)
+			{
+				for (j = 0; j < arguments->num_matrices; j++)
+				{
+					Matrix[j][N_r + 1][i] = 1 - (h * i); // Untere Kante
+				}
 			}
 		}
 	}
@@ -192,13 +225,6 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 
 	double pih = 0.0;
 	double fpisin = 0.0;
-
-	// get number of processes
-    int world_size;
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    // get rank of process
-    int world_rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
 	int term_iteration = options->term_iteration;
 
@@ -281,8 +307,6 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 	}
 
 	results->m = m2;
-	// finalize MPI Environment
-	MPI_Finalize();
 }
 
 /* ************************************************************************ */
@@ -351,7 +375,7 @@ displayStatistics (struct calculation_arguments const* arguments, struct calcula
 /****************************************************************************/
 static
 void
-displayMatrix (struct calculation_arguments* arguments, struct calculation_results* results, struct options* options)
+displayMatrix (struct calculation_arguments* arguments, struct calculation_results* results, struct options* options, struct mpi_parameters* mpi_paras)
 {
 	int x, y;
 
@@ -359,16 +383,39 @@ displayMatrix (struct calculation_arguments* arguments, struct calculation_resul
 
 	int const interlines = options->interlines;
 
-	printf("Matrix:\n");
+	uint64_t start_r = mpi_paras->start_r;
+	uint64_t end_r = mpi_paras->end_r;
 
-	for (y = 0; y < 9; y++)
+	if (mpi_paras->world_rank == 0)
+	{
+		printf("Matrix:\n");
+		for (x = 0; x < 9; x++)
+			{
+				printf ("%7.4f", Matrix[0][x * (interlines + 1)]);
+			}
+			printf ("\n");
+	}
+
+	for (y = 1; y < 8; y++)
+	{
+		uint64_t line = y * (interlines + 1);
+		if (line < end_r && line >= start_r)
+		{
+			for (x = 0; x < 9; x++)
+			{
+				printf ("%7.4f", Matrix[line - start_r + 1][x * (interlines + 1)]);
+			}
+			printf ("\n");
+		}
+	}
+
+	if (mpi_paras->world_rank == mpi_paras->world_size - 1)
 	{
 		for (x = 0; x < 9; x++)
-		{
-			printf ("%7.4f", Matrix[y * (interlines + 1)][x * (interlines + 1)]);
-		}
-
-		printf ("\n");
+			{
+				printf ("%7.4f", Matrix[mpi_paras->N_r + 1][x * (interlines + 1)]);
+			}
+			printf ("\n");
 	}
 
 	fflush (stdout);
@@ -383,22 +430,54 @@ main (int argc, char** argv)
 	struct options options;
 	struct calculation_arguments arguments;
 	struct calculation_results results;
+	struct mpi_parameters mpi_paras;
+
+	MPI_Init(NULL, NULL);
+	// get number of processes
+    MPI_Comm_size(MPI_COMM_WORLD, &mpi_paras.world_size);
+    // get rank of process
+    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_paras.world_rank);
+	
+	int signal = 0;
 
 	askParams(&options, argc, argv);
 
 	initVariables(&arguments, &results, &options);
 
-	allocateMatrices(&arguments);
-	initMatrices(&arguments, &options);
+	mpi_paras.start_r = (mpi_paras.world_rank*(arguments.N - 1))/mpi_paras.world_size + 1;
+	mpi_paras.end_r = ((mpi_paras.world_rank + 1)*(arguments.N - 1))/mpi_paras.world_size + 1;
+	mpi_paras.N_r = mpi_paras.end_r - mpi_paras.start_r;
 
-	gettimeofday(&start_time, NULL);
-	calculate(&arguments, &results, &options);
-	gettimeofday(&comp_time, NULL);
+	allocateMatrices(&arguments, &mpi_paras);
+	initMatrices(&arguments, &options, &mpi_paras);
 
-	displayStatistics(&arguments, &results, &options);
-	displayMatrix(&arguments, &results, &options);
+	//gettimeofday(&start_time, NULL);
+	//calculate(&arguments, &results, &options);
+	//gettimeofday(&comp_time, NULL);
 
+	//displayStatistics(&arguments, &results, &options);
+	
+	if (mpi_paras.world_rank == 0)
+	{
+		displayMatrix(&arguments, &results, &options, &mpi_paras);
+		MPI_Ssend(&signal, 1, MPI_INT, mpi_paras.world_rank + 1, 0, MPI_COMM_WORLD);
+	}
+	if (mpi_paras.world_rank < mpi_paras.world_size && mpi_paras.world_rank > 0)
+	{
+		//printf("%d: vor rec", mpi_paras.world_rank);
+		MPI_Recv(&signal, 1, MPI_INT, mpi_paras.world_rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		//printf("%d: zwischen rec und disp", mpi_paras.world_rank);
+		displayMatrix(&arguments, &results, &options, &mpi_paras);
+	}
+	if (mpi_paras.world_rank < mpi_paras.world_size - 1 && mpi_paras.world_rank > 0)
+	{
+		MPI_Ssend(&signal, 1, MPI_INT, mpi_paras.world_rank + 1, 0, MPI_COMM_WORLD);
+	}
+	//printf("%d", mpi_paras.world_rank);
+	MPI_Barrier(MPI_COMM_WORLD);
 	freeMatrices(&arguments);
-
+	
+	// finalize MPI Environment
+	MPI_Finalize();
 	return 0;
 }
