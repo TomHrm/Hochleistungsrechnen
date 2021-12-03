@@ -141,7 +141,7 @@ allocateMatrices (struct calculation_arguments* arguments, struct mpi_parameters
 	{
 		arguments->Matrix[i] = allocateMemory((N_r + 2) * sizeof(double*));
 
-		for (j = 0; j <= N_r + 1; j++)
+		for (j = 0; j <= N_r + 1; j++) 
 		{
 			arguments->Matrix[i][j] = arguments->M + (i * (N + 1) * (N_r + 2)) + (j * (N + 1));
 		}
@@ -463,7 +463,7 @@ calcJacobiMPI (struct calculation_arguments const* arguments, struct calculation
 /* ************************************************************************ */
 static
 void
-displayStatistics (struct calculation_results const* results, struct options const* options, double gesamtspeicher)
+displayStatistics (struct calculation_arguments* arguments, struct calculation_results const* results, struct options const* options, double gesamtspeicher)
 {
 	//int N = arguments->N;
 	double time = (comp_time.tv_sec - start_time.tv_sec) + (comp_time.tv_usec - start_time.tv_usec) * 1e-6;
