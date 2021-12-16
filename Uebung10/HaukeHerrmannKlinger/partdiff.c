@@ -350,7 +350,7 @@ calcJacobiMPI (struct calculation_arguments const* arguments, struct calculation
 
 	int term_iteration = options->term_iteration;
 
-	/* initialize m1 and m2 depending for Jacobi */
+	/* initialize m1 and m2 for Jacobi */
 	m1 = 0;
 	m2 = 1;
 
@@ -458,12 +458,184 @@ calcJacobiMPI (struct calculation_arguments const* arguments, struct calculation
 	results->m = m2;
 }
 
+
+/* ************************************************************************ */
+/* calcGaussSeidelMPI: solves the equation for Gauß-Seidel with MPI         */
+/* ************************************************************************ */
+
+// neue calculate wird für Gauß-Seidel verwendet
+static
+void
+calcGaussSeidelMPI (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options, struct mpi_parameters* mpi_paras)
+{
+	int i, j;           /* local variables for loops */
+	double star;        /* four times center value minus 4 neigh.b values */
+	double residuum;    /* residuum of current iteration */
+	double maxResiduum; /* maximum residuum value of a slave in iteration */
+
+	// Höhe (Anzahl Zeilen)
+	int const N_r = mpi_paras->N_r;
+	int const N = arguments->N;
+	double const h = arguments->h;
+
+	double pih = 0.0;
+	double fpisin = 0.0;
+
+	// MPI Parameter
+	int rank = mpi_paras->world_rank;
+	int size = mpi_paras->world_size;
+
+	int term_iteration = options->term_iteration;
+
+	int residuumGenauGenug = 0;
+
+	double** Matrix = arguments->Matrix[0];
+
+
+	if (options->inf_func == FUNC_FPISIN)
+	{
+		pih = PI * h;
+		fpisin = 0.25 * TWO_PI_SQUARE * h * h;
+	}
+
+
+	while (term_iteration > 0)
+	{
+
+		// Der erste Prozess kann sofort anfangen, alle anderen müssen die voherige Zeile empfangen
+		if (rank > 0)
+		{
+			MPI_Recv(&Matrix[0][0], N, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		}
+
+		// Sobald wir in der 2. Iteration sind, müssen wir immer die erste Zeile vom nachfolgenden Prozess empfangen
+		if (results->stat_iteration > 0 && rank < size - 1)
+		{
+			MPI_Recv(&Matrix[N_r + 1][0], N, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		}
+
+		if (rank > 0)
+		{
+			double maybeMaxResiduum;
+			MPI_Recv(&maybeMaxResiduum, 1, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			maxResiduum = (maxResiduum < maybeMaxResiduum) ? maybeMaxResiduum : maxResiduum;
+		}
+
+		/* over all rows, nur über Teilmatrix */
+		for (i = 1; i < N_r + 1; i++)
+		{
+			double fpisin_i = 0.0;
+
+			if (options->inf_func == FUNC_FPISIN)
+			{
+				fpisin_i = fpisin * sin(pih * (double)i);
+			}
+
+			/* over all columns */
+			for (j = 1; j < N; j++)
+			{
+				star = 0.25 * (Matrix[i-1][j] + Matrix[i][j-1] + Matrix[i][j+1] + Matrix[i+1][j]);
+
+				if (options->inf_func == FUNC_FPISIN)
+				{
+					star += fpisin_i * sin(pih * (double)j);
+				}
+
+				if (options->termination == TERM_PREC || term_iteration == 1)
+				{
+					residuum = Matrix[i][j] - star;
+					residuum = (residuum < 0) ? -residuum : residuum;
+					maxResiduum = (residuum < maxResiduum) ? maxResiduum : residuum;
+				}
+
+				Matrix[i][j] = star;
+			}
+		}
+		
+		// alle außer der letzte Prozess senden ihre letzte Zeile an den nächsten
+		if (rank < size - 1)
+		{
+			MPI_Ssend(&Matrix[N_r][0], N, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
+		}
+
+		// solange wir noch vor der letzten Iteration sind,
+		// wird die neue erste Zeile an den voherigen Prozess gesendet
+		if (rank > 0) 
+		{
+			if(term_iteration > 1)
+			{
+				MPI_Ssend(&Matrix[1][0], N, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD);
+			}
+		}
+
+		if (rank < size - 1)
+		{
+			MPI_Ssend(&maxResiduum, 1, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
+		}
+
+		
+		if (rank == size - 1)
+		{
+			printf("Rank %d sendet in %ld\n", rank, results->stat_iteration);
+			if (maxResiduum < options->term_precision)
+			{
+				residuumGenauGenug = 1;
+			}
+			MPI_Ssend(&residuumGenauGenug, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+			residuumGenauGenug = 0;
+		}
+
+		uint64_t mindestIteration = size-4;
+		if(results->stat_iteration > mindestIteration)
+		{
+			printf("Rank %d will receiven/senden in %ld \n", rank, results->stat_iteration);
+			if (rank == 0)
+			{
+				MPI_Recv(&residuumGenauGenug, 1, MPI_DOUBLE, size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				MPI_Ssend(&residuumGenauGenug, 1, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
+			}
+			else
+			{
+				MPI_Recv(&residuumGenauGenug, 1, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				if (rank < size - 1)
+				{
+					MPI_Ssend(&residuumGenauGenug, 1, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
+				}
+			}
+			if (residuumGenauGenug == 1)
+			{
+				term_iteration = 0;
+			}
+		}
+
+
+
+		results->stat_iteration++;
+		results->stat_precision = maxResiduum;
+
+		/* check for stopping calculation depending on termination method 
+		if (options->termination == TERM_PREC)
+		{
+			if (maxResiduum < options->term_precision)
+			{
+				term_iteration = 0;
+			}
+		}
+		else 
+		*/if (options->termination == TERM_ITER)
+		{
+			term_iteration--;
+		}
+	}
+	results->m = 0;
+}
+
 /* ************************************************************************ */
 /*  displayStatistics: displays some statistics about the calculation       */
 /* ************************************************************************ */
 static
 void
-displayStatistics (struct calculation_arguments* arguments, struct calculation_results const* results, struct options const* options, double gesamtspeicher)
+displayStatistics (struct calculation_results const* results, struct options const* options, double gesamtspeicher)
 {
 	//int N = arguments->N;
 	double time = (comp_time.tv_sec - start_time.tv_sec) + (comp_time.tv_usec - start_time.tv_usec) * 1e-6;
@@ -599,6 +771,18 @@ main (int argc, char** argv)
 	// Signal für displayMatrix Reihenfolge
 	int signal = 0;
 
+	if (mpi_paras.world_rank == 0)
+	{
+	printf("============================================================\n");
+	printf("Program for calculation of partial differential equations.  \n");
+	printf("============================================================\n");
+	printf("(c) Dr. Thomas Ludwig, TU München.\n");
+	printf("    Thomas A. Zochler, TU München.\n");
+	printf("    Andreas C. Schmidt, TU München.\n");
+	printf("============================================================\n");
+	printf("\n");
+	}
+
 	askParams(&options, argc, argv);
 
 	initVariables(&arguments, &results, &options);
@@ -608,47 +792,51 @@ main (int argc, char** argv)
 	mpi_paras.end_r = ((mpi_paras.world_rank + 1)*(arguments.N - 1))/mpi_paras.world_size + 1;
 	mpi_paras.N_r = mpi_paras.end_r - mpi_paras.start_r;
 
-	if (options.method == METH_GAUSS_SEIDEL || mpi_paras.world_size == 1)
+	if (mpi_paras.world_size == 1)
 	{
-		// sequentiell
-		if (mpi_paras.world_rank == 0)
-		{
-			mpi_paras.start_r = 1;
-			mpi_paras.end_r = arguments.N;
-			mpi_paras.N_r = mpi_paras.end_r - mpi_paras.start_r;
+		mpi_paras.start_r = 1;
+		mpi_paras.end_r = arguments.N;
+		mpi_paras.N_r = mpi_paras.end_r - mpi_paras.start_r;
 
-			allocateMatrices(&arguments, &mpi_paras);
-			initMatrices(&arguments, &options, &mpi_paras);
-			gettimeofday(&start_time, NULL);
-			calculate(&arguments, &results, &options);
-			gettimeofday(&comp_time, NULL);
+		allocateMatrices(&arguments, &mpi_paras);
+		initMatrices(&arguments, &options, &mpi_paras);
+		gettimeofday(&start_time, NULL);
+		calculate(&arguments, &results, &options);
+		gettimeofday(&comp_time, NULL);
 
-			
-			double gesamtspeicher = (arguments.N + 1) * (mpi_paras.N_r + 2) * sizeof(double) * arguments.num_matrices / 1024.0 / 1024.0;
-			displayStatistics(&arguments, &results, &options, gesamtspeicher);
-			displayMatrix(&arguments, &results, &options, &mpi_paras);
-			MPI_Barrier(MPI_COMM_WORLD);
-			freeMatrices(&arguments);
-		}
-		else
-		{
-			MPI_Barrier(MPI_COMM_WORLD);
-		}
+		
+		double gesamtspeicher = (arguments.N + 1) * (mpi_paras.N_r + 2) * sizeof(double) * arguments.num_matrices / 1024.0 / 1024.0;
+		displayStatistics(&results, &options, gesamtspeicher);
+		displayMatrix(&arguments, &results, &options, &mpi_paras);
+		MPI_Barrier(MPI_COMM_WORLD);
+		freeMatrices(&arguments);
 	}
 	else
 	{
-		// parallel
 		allocateMatrices(&arguments, &mpi_paras);
 		initMatrices(&arguments, &options, &mpi_paras);
 
 		gettimeofday(&start_time, NULL);
-		// Barrieren für korrekte Zeitmessung
-		MPI_Barrier(MPI_COMM_WORLD);
+		if (options.method == METH_GAUSS_SEIDEL)
+		{
+			// parallel mit Gauss-Seidel
+			// Barrieren für korrekte Zeitmessung
+			MPI_Barrier(MPI_COMM_WORLD);
 
-		calcJacobiMPI(&arguments, &results, &options, &mpi_paras);
+			calcGaussSeidelMPI(&arguments, &results, &options, &mpi_paras);
 
-		MPI_Barrier(MPI_COMM_WORLD);
-		//calculate(&arguments, &results, &options);
+			MPI_Barrier(MPI_COMM_WORLD);
+		}
+		else
+		{
+			// parallel mit Jacobi
+			// Barrieren für korrekte Zeitmessung
+			MPI_Barrier(MPI_COMM_WORLD);
+
+			calcJacobiMPI(&arguments, &results, &options, &mpi_paras);
+
+			MPI_Barrier(MPI_COMM_WORLD);
+		}
 		gettimeofday(&comp_time, NULL);
 
 		// Gesamtspeicher ist Summe der einzelnen Speicher
@@ -659,7 +847,7 @@ main (int argc, char** argv)
 		// Matrix in richtiger Reihenfolge ausgeben
 		if (mpi_paras.world_rank == 0)
 		{
-			displayStatistics(&arguments, &results, &options, gesamtspeicher);
+			displayStatistics(&results, &options, gesamtspeicher);
 			displayMatrix(&arguments, &results, &options, &mpi_paras);
 			MPI_Ssend(&signal, 1, MPI_INT, mpi_paras.world_rank + 1, 0, MPI_COMM_WORLD);
 		}
@@ -677,7 +865,6 @@ main (int argc, char** argv)
 			MPI_Barrier(MPI_COMM_WORLD);
 			freeMatrices(&arguments);
 	}
-
 	
 	// finalize MPI Environment
 	MPI_Finalize();
