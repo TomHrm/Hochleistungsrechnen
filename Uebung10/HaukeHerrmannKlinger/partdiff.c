@@ -27,7 +27,6 @@
 #include <malloc.h>
 #include <sys/time.h>
 #include <mpi.h>
-#include <omp.h>
 
 #include "partdiff.h"
 
@@ -47,7 +46,8 @@ struct calculation_results
 	double    stat_precision; /* actual precision of all slaves in iteration    */
 };
 
-//eigenes Struct für MPI Variablen	
+//eigenes Struct für MPI Variablen
+
 struct mpi_parameters
 {
 	int world_size;
@@ -106,7 +106,25 @@ freeMatrices (struct calculation_arguments* arguments)
 /* ************************************************************************ */
 static
 void*
-allocateMemory (struct calculation_arguments* arguments, struct mpi_parameters* mpi_paras)
+allocateMemory (size_t size)
+{
+	void *p;
+
+	if ((p = malloc(size)) == NULL)
+	{
+		printf("Speicherprobleme! (%" PRIu64 " Bytes angefordert)\n", size);
+		exit(1);
+	}
+
+	return p;
+}
+
+/* ************************************************************************ */
+/* allocateMatrices: allocates memory for matrices                          */
+/* ************************************************************************ */
+static
+void
+allocateMatrices (struct calculation_arguments* arguments, struct mpi_parameters* mpi_paras)
 {
 	uint64_t i, j;
 
@@ -114,6 +132,7 @@ allocateMemory (struct calculation_arguments* arguments, struct mpi_parameters* 
 	uint64_t const N_r = mpi_paras->N_r;
 
 	// jeder Prozess allokiert Abschnitt der Matrix
+
 	arguments->M = allocateMemory(arguments->num_matrices * (N_r + 2) * (N + 1) * sizeof(double));
 
 	arguments->Matrix = allocateMemory(arguments->num_matrices * sizeof(double**));
@@ -130,7 +149,7 @@ allocateMemory (struct calculation_arguments* arguments, struct mpi_parameters* 
 }
 
 /* ************************************************************************ */
-/* allocateMatrices: allocates memory for matrices                          */
+/* initMatrices: Initialize matrix/matrices and some global variables       */
 /* ************************************************************************ */
 static
 void
@@ -198,51 +217,11 @@ initMatrices (struct calculation_arguments* arguments, struct options const* opt
 	}
 }
 
-
-/* ************************************************************************ */
-/* initMatrices: Initialize matrix/matrices and some global variables       */
-/* ************************************************************************ */
-static
-void
-initMatrices (struct calculation_arguments* arguments, struct options const* options)
-{
-	uint64_t g, i, j; /* local variables for loops */
-
-	uint64_t const N = arguments->N;
-	double const h = arguments->h;
-	double*** Matrix = arguments->Matrix;
-
-	/* initialize matrix/matrices with zeros */
-	for (g = 0; g < arguments->num_matrices; g++)
-	{
-		for (i = 0; i <= N; i++)
-		{
-			for (j = 0; j <= N; j++)
-			{
-				Matrix[g][i][j] = 0.0;
-			}
-		}
-	}
-
-	/* initialize borders, depending on function (function 2: nothing to do) */
-	if (options->inf_func == FUNC_F0)
-	{
-		for(i = 0; i < N; i++)
-		{
-			for (j = 0; j < arguments->num_matrices; j++)
-			{
-				Matrix[j][i][0] = 1 + (1 - (h * i)); // Linke Kante
-				Matrix[j][N][i] = 1 - (h * i); // Untere Kante
-				Matrix[j][N - i][N] = h * i; // Rechte Kante
-				Matrix[j][0][N - i] = 1 + h * i; // Obere Kante
-			}
-		}
-	}
-}
-
 /* ************************************************************************ */
 /* calculate: solves the equation                                           */
 /* ************************************************************************ */
+
+// alte calculate wird für Gauß-Seidel bzw. einen Prozess verwendet
 static
 void
 calculate (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
@@ -343,9 +322,13 @@ calculate (struct calculation_arguments const* arguments, struct calculation_res
 }
 
 
+// neue calculate für paralleles Jacobi
+/* ************************************************************************ */
+/* calcJacobiMPI: solves the equation for Jacobi with MPI                   */
+/* ************************************************************************ */
 static
 void
-calculate_gauß_Seidel (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options)
+calcJacobiMPI (struct calculation_arguments const* arguments, struct calculation_results* results, struct options const* options, struct mpi_parameters* mpi_paras)
 {
 	int i, j;           /* local variables for loops */
 	int m1, m2;         /* used as indices for old and new matrices */
@@ -353,30 +336,23 @@ calculate_gauß_Seidel (struct calculation_arguments const* arguments, struct ca
 	double residuum;    /* residuum of current iteration */
 	double maxResiduum; /* maximum residuum value of a slave in iteration */
 
+	// Höhe (Anzahl Zeilen)
+	int const N_r = mpi_paras->N_r;
 	int const N = arguments->N;
 	double const h = arguments->h;
 
 	double pih = 0.0;
 	double fpisin = 0.0;
 
+	// MPI Parameter
+	int rank = mpi_paras->world_rank;
+	int size = mpi_paras->world_size;
+
 	int term_iteration = options->term_iteration;
 
-		
-	#ifdef _OPENMP
-		omp_set_num_threads(options->num_threads);
-	#endif
-
-	/* initialize m1 and m2 depending on algorithm */
-	if (options->method == METH_JACOBI)
-	{
-		m1 = 0;
-		m2 = 1;
-	}
-	else
-	{
-		m1 = 0;
-		m2 = 0;
-	}
+	/* initialize m1 and m2 depending for Jacobi */
+	m1 = 0;
+	m2 = 1;
 
 	if (options->inf_func == FUNC_FPISIN)
 	{
@@ -390,9 +366,9 @@ calculate_gauß_Seidel (struct calculation_arguments const* arguments, struct ca
 		double** Matrix_In  = arguments->Matrix[m2];
 
 		maxResiduum = 0;
-
 		/* over all rows */
-		for (i = 1; i < N; i++)
+		// nur über Abschnitt des Prozesses
+		for (i = 1; i < N_r + 1; i++)
 		{
 			double fpisin_i = 0.0;
 
@@ -421,6 +397,41 @@ calculate_gauß_Seidel (struct calculation_arguments const* arguments, struct ca
 				Matrix_Out[i][j] = star;
 			}
 		}
+		
+		// erste/letzte Zeilen werden untereinander ausgetauscht, sodass aktuelle (neu berechnete) Werte
+		// in der nächsten Iteration verwendet werden
+		// Wir vermuten hier ist ein Fehler.
+		
+		if (rank == 0)
+		{
+			MPI_Ssend(&Matrix_Out[N_r][0], N, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
+		}
+		else 
+		{
+			MPI_Recv(&Matrix_Out[0][0], N, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			if (rank < size - 1)
+			{
+				MPI_Ssend(&Matrix_Out[N_r][0], N, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
+			}
+		}
+
+		if (rank == size - 1)
+		{
+			MPI_Ssend(&Matrix_Out[1][0], N, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD);
+		}
+		else 
+		{
+			MPI_Recv(&Matrix_Out[N_r + 1][0], N, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			if (rank > 0)
+			{
+				MPI_Ssend(&Matrix_Out[1][0], N, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD);
+			}
+		}
+		
+		// alle Prozesse gleiches Residuum
+		double allMaxResiduum;
+		MPI_Allreduce(&maxResiduum, &allMaxResiduum, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+		maxResiduum = allMaxResiduum;
 
 		results->stat_iteration++;
 		results->stat_precision = maxResiduum;
@@ -452,11 +463,13 @@ calculate_gauß_Seidel (struct calculation_arguments const* arguments, struct ca
 /* ************************************************************************ */
 static
 void
-displayStatistics (struct calculation_arguments const* arguments, struct calculation_results const* results, struct options const* options, , double gesamtspeicher)
+displayStatistics (struct calculation_arguments* arguments, struct calculation_results const* results, struct options const* options, double gesamtspeicher)
 {
-	int N = arguments->N;
+	//int N = arguments->N;
 	double time = (comp_time.tv_sec - start_time.tv_sec) + (comp_time.tv_usec - start_time.tv_usec) * 1e-6;
 
+	// Der Gesamtspeicher wird vorher berechnet un übergeben
+	
 	printf("Berechnungszeit:    %f s \n", time);
 	printf("Speicherbedarf:     %f MiB\n", gesamtspeicher);
 	printf("Berechnungsmethode: ");
