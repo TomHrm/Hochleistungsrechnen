@@ -610,8 +610,9 @@ calcGaussSeidelMPI_prec (struct calculation_arguments const* arguments, struct c
 
 	double** Matrix = arguments->Matrix[0];
 
-	// Terminierungsvariablen
-	int residuumGenauGenug = 0;
+	// Terminierung
+	int signal = 0;
+	int gesendet = 0;
 
 	if (options->inf_func == FUNC_FPISIN)
 	{
@@ -623,39 +624,37 @@ calcGaussSeidelMPI_prec (struct calculation_arguments const* arguments, struct c
 	{
 		maxResiduum = 0;
 		uint16_t aktuelleIteration = results->stat_iteration;
+		printf("Rang %d ist in Iteration %d\n", rank, aktuelleIteration);
 	
 		// Der erste Prozess kann sofort anfangen, alle anderen müssen die voherige Zeile empfangen
 		// bzw. das maxResiduum vom voherigen Prozess
 		if (rank > 0)
 		{
 			MPI_Recv(&Matrix[0][0], N, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
 			double maybeMaxResiduum;
 			MPI_Recv(&maybeMaxResiduum, 1, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			maxResiduum = (maybeMaxResiduum > maxResiduum) ? maybeMaxResiduum : maxResiduum;
+
+			MPI_Recv(&signal, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		}
 		
-		if (aktuelleIteration > size && rank == 0)
+		if (rank == 0 && aktuelleIteration >= size - 1)
 		{
-			MPI_Recv(&residuumGenauGenug, 1, MPI_INT, size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			MPI_Recv(&signal, 1, MPI_INT, size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		}
-		if (aktuelleIteration > size && rank != 0)
+
+		if (signal == 1)
 		{
-			MPI_Recv(&residuumGenauGenug, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			term_iteration = 0;
 		}
-		
-		// Sobald wir in der 2. Iteration sind, müssen wir immer die erste Zeile vom nachfolgenden Prozess empfangen
 
-
-		printf("%d ist in Iteration %d\n", rank, aktuelleIteration);
 		if (aktuelleIteration > 0 && rank < size - 1)
 		{
-			printf("%d will Teile empfangen\n", rank);
 			MPI_Recv(&Matrix[N_r + 1][0], N, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		}
-
-
-
-	
+		
+		printf("Rang %d berechnet Iteration %d\n", rank, aktuelleIteration);
 		/* over all rows */
 		for (i = 1; i < N_r + 1; i++)
 		{
@@ -681,49 +680,54 @@ calcGaussSeidelMPI_prec (struct calculation_arguments const* arguments, struct c
 					residuum = Matrix[i][j] - star;
 					residuum = (residuum < 0) ? -residuum : residuum;
 					maxResiduum = (residuum < maxResiduum) ? maxResiduum : residuum;
+					
 				}
 
 				Matrix[i][j] = star;
 			}
+
 		}
+
+		/*
+		if (aktuelleIteration == 200)
+		{
+			maxResiduum = 0;
+		}
+		*/
+		if (rank == size - 1)
+		{
+			if (maxResiduum < options->term_precision)
+			{
+				signal = 1;
+			}
+		}
+		
 		// alle außer der letzte Prozess senden ihre letzte Zeile an den nächsten
 		if (rank < size - 1)
 		{
 			MPI_Ssend(&Matrix[N_r][0], N, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
 			MPI_Ssend(&maxResiduum, 1, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
+			MPI_Ssend(&signal, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
 		}
-		
-		
-		if (rank == size - 1)
+
+		if (rank == size - 1 && gesendet == 0)
 		{
-			if (maxResiduum < options->term_precision)
+			MPI_Ssend(&signal, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+			if (signal == 1)
 			{
-				residuumGenauGenug = 1;
+				gesendet = 1;
 			}
-			MPI_Ssend(&residuumGenauGenug, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-			residuumGenauGenug = 0;
 		}
+		
+		signal = 0;
 
-		if (rank < size - 1)
+		if (rank > 0 && term_iteration != 0)
 		{
-			MPI_Ssend(&residuumGenauGenug, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+			MPI_Ssend(&Matrix[1][0], N, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD);
 		}
-		printf("%d hat gesendet\n", rank);
-
+		
 		results->stat_iteration++;
 		results->stat_precision = maxResiduum;
-
-		// solange wir noch vor der letzten Iteration sind,
-		// wird die neue erste Zeile an den voherigen Prozess gesendet
-		if (rank > 0) 
-		{
-			if(term_iteration > 1)
-			{
-				printf("%d will Teile senden\n", rank);
-				MPI_Ssend(&Matrix[1][0], N, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD);
-			}
-		}
-		printf("%d hat Teile gesendet\n", rank);
 
 	}
 	results->m = 0;
